@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Prism MedConnect",
+    "slug": "prism-medconnect",
+    "version": "0.1.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "prismmedconnect",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.prism.medconnect",
+      "minSdkVersion": 23,
+      "targetSdkVersion": 35,
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ],
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "targetDevice": {
+        "androidVersion": "13",
+        "model": "TB310XU",
+        "ramGb": 4,
+        "storageGb": 128
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store"
+    ]
+  }
+}
