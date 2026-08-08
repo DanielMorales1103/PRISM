@@ -1,39 +1,25 @@
-# Prism MedConnect Mobile
+# Prism MedConnect
 
-Aplicacion Android para tablet construida con React Native y Expo.
+Monorepo para la aplicacion Android tablet y backend/API de Prism MedConnect.
 
-## Tablet objetivo
+## Estructura
 
-- Android: 13
-- Modelo: TB310XU
-- RAM: 4GB
-- Almacenamiento: 128GB
+```text
+apps/mobile      App Android tablet en React Native/Expo
+apps/api         Backend/API Node.js + Express + MongoDB
+packages/shared Tipos compartidos entre app y API
+```
 
 ## Comandos
 
 ```powershell
 pnpm install
-pnpm start
-pnpm android
+pnpm mobile
+pnpm mobile:android
+pnpm api:dev
 pnpm lint
 ```
 
-## Avance Fase 1
-
-- Splash inspirado en el mock web.
-- Login responsive para orientacion vertical y horizontal.
-- Home/dashboard inicial con KPIs, agenda y accesos principales.
-- Navegacion responsive: sidebar en horizontal y menu compacto en vertical.
-- Pantallas iniciales para administracion dentro de la app Android: usuarios, productos, catalogos y KPIs.
-
-## Base tecnica inicial
-
-- React Native con Expo y TypeScript.
-- Estructura inicial en `src/`.
-- Configuracion Android con package `com.prism.medconnect`.
-- Permisos declarados para ubicacion y notificaciones.
-- Dependencias instaladas para navegacion, offline, SQLite, SecureStore, ubicacion y notificaciones.
-
 ## Nota
 
-El mock anterior era web. Esta app se esta rehaciendo para Android tablet, tomando el diseno como referencia visual y adaptandolo a componentes nativos.
+La app movil fue movida a `apps/mobile`. El backend y los tipos compartidos quedan preparados para la Fase 1.
