@@ -3,12 +3,13 @@ import { ActivityIndicator, SafeAreaView, StyleSheet, useWindowDimensions, View 
 import { AdminScreen } from '../screens/AdminScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { ModuleScreen } from '../screens/ModuleScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { Sidebar } from '../components/Sidebar';
 import { canAccessScreen } from './permissions';
 import { AppScreen, SessionUser } from './types';
 import { colors } from '../theme/theme';
-import { loadSession } from '../services/session';
+import { clearSession, loadSession } from '../services/session';
 
 export function AppShell() {
   const [screen, setScreen] = useState<AppScreen>('splash');
@@ -37,6 +38,13 @@ export function AppShell() {
   const handleLogin = (nextUser: SessionUser) => {
     setUser(nextUser);
     setScreen('home');
+  };
+
+  const handleLogout = () => {
+    void clearSession().finally(() => {
+      setUser(null);
+      setScreen('login');
+    });
   };
 
   if (screen === 'splash') {
@@ -69,6 +77,14 @@ export function AppShell() {
         return <AdminScreen currentUser={user} type="catalogs" />;
       case 'dashboard':
         return <AdminScreen currentUser={user} type="dashboard" />;
+      case 'clients':
+      case 'planner':
+      case 'map':
+      case 'visits':
+      case 'marketing':
+      case 'coaching':
+      case 'billing':
+        return <ModuleScreen role={user.role} type={screen} />;
       case 'home':
       default:
         return <HomeScreen user={user} onNavigate={setScreen} />;
@@ -78,7 +94,7 @@ export function AppShell() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.shell, compactNav && styles.shellCompact]}>
-        <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} />
+        <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} onLogout={handleLogout} />
         <View style={styles.content}>{renderScreen()}</View>
       </View>
     </SafeAreaView>

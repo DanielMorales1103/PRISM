@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { Activity, Calendar, Map, PackagePlus, PlusCircle, TrendingUp, Users } from 'lucide-react-native';
+import { Activity, BookOpenCheck, Calendar, CreditCard, Map, Megaphone, PackagePlus, PlusCircle, TrendingUp, Users } from 'lucide-react-native';
 import { ActionCard } from '../components/ActionCard';
 import { MetricCard } from '../components/MetricCard';
 import { canManageCatalogs } from '../app/permissions';
@@ -21,13 +21,23 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 920;
   const canAdminister = canManageCatalogs(user.role);
+  const isBilling = user.role === 'facturacion';
+  const isSupervisor = user.role === 'supervisor';
+  const isExecutive = user.role === 'jefe' || user.role === 'admin';
+  const subhead = isBilling
+    ? 'Consulta clientes, ventas, cobros y documentos administrativos.'
+    : isSupervisor
+      ? 'Da seguimiento a planificaciones, cobertura y coaching del equipo.'
+      : isExecutive
+        ? 'Consulta indicadores consolidados y administra configuraciones del CRM.'
+        : 'Tienes 4 visitas prioritarias y 2 pendientes de sincronizar.';
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.header, wide && styles.headerWide]}>
         <View>
           <Text style={styles.greeting}>Hola, {user.name}</Text>
-          <Text style={styles.subhead}>Tienes 4 visitas prioritarias y 2 pendientes de sincronizar.</Text>
+          <Text style={styles.subhead}>{subhead}</Text>
         </View>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{user.name.slice(0, 2).toUpperCase()}</Text>
@@ -41,14 +51,29 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
       </View>
 
       <View style={[styles.actions, wide && styles.actionsWide]}>
-        <ActionCard
-          prominent
-          title="Nueva visita medica"
-          subtitle="Registra visita, muestras y observaciones."
-          icon={<PlusCircle size={34} color={colors.onPrimary} />}
-        />
-        <ActionCard title="Agenda" subtitle="Planificador diario y semanal." icon={<Calendar size={32} color={colors.primary} />} />
-        <ActionCard title="Mapa" subtitle="Ubicaciones y rutas asignadas." icon={<Map size={32} color={colors.primary} />} />
+        {!isBilling && (
+          <ActionCard
+            prominent
+            title={isSupervisor || isExecutive ? 'Seguimiento de visitas' : 'Nueva visita medica'}
+            subtitle={isSupervisor || isExecutive ? 'Revisa formularios, cobertura y observaciones.' : 'Registra visita, muestras y observaciones.'}
+            icon={<PlusCircle size={34} color={colors.onPrimary} />}
+            onPress={() => onNavigate('visits')}
+          />
+        )}
+        {isBilling && (
+          <ActionCard
+            prominent
+            title="Ventas y cobros"
+            subtitle="Consulta cobros, notas de credito y devoluciones."
+            icon={<CreditCard size={34} color={colors.onPrimary} />}
+            onPress={() => onNavigate('billing')}
+          />
+        )}
+        <ActionCard title="Clientes" subtitle="Medicos, farmacias e instituciones." icon={<Users size={32} color={colors.primary} />} onPress={() => onNavigate('clients')} />
+        {!isBilling && <ActionCard title="Agenda" subtitle="Planificador diario y semanal." icon={<Calendar size={32} color={colors.primary} />} onPress={() => onNavigate('planner')} />}
+        {!isBilling && <ActionCard title="Mapa" subtitle="Ubicaciones y rutas asignadas." icon={<Map size={32} color={colors.primary} />} onPress={() => onNavigate('map')} />}
+        {!isBilling && <ActionCard title="Marketing" subtitle="Reja promocional y muestras." icon={<Megaphone size={32} color={colors.primary} />} onPress={() => onNavigate('marketing')} />}
+        {!isBilling && <ActionCard title="Coaching" subtitle="Capacitaciones y evaluaciones." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
         {canAdminister && (
           <ActionCard
             title="Administracion"
