@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-n
 import { Activity, Calendar, Map, PackagePlus, PlusCircle, TrendingUp, Users } from 'lucide-react-native';
 import { ActionCard } from '../components/ActionCard';
 import { MetricCard } from '../components/MetricCard';
+import { canManageCatalogs } from '../app/permissions';
 import { AppScreen, SessionUser } from '../app/types';
 import { colors, radius, spacing } from '../theme/theme';
 
@@ -19,7 +20,7 @@ const agenda = [
 export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 920;
-  const isAdmin = user.role === 'admin';
+  const canAdminister = canManageCatalogs(user.role);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -48,7 +49,7 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
         />
         <ActionCard title="Agenda" subtitle="Planificador diario y semanal." icon={<Calendar size={32} color={colors.primary} />} />
         <ActionCard title="Mapa" subtitle="Ubicaciones y rutas asignadas." icon={<Map size={32} color={colors.primary} />} />
-        {isAdmin && (
+        {canAdminister && (
           <ActionCard
             title="Administracion"
             subtitle="Usuarios, roles, productos y catalogos."

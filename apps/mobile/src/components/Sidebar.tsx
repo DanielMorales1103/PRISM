@@ -1,10 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { AppScreen } from '../app/types';
+import { canAccessScreen } from '../app/permissions';
+import { AppRole, AppScreen } from '../app/types';
 import { colors, radius, spacing } from '../theme/theme';
 
 interface SidebarProps {
   active: AppScreen;
   compact: boolean;
+  role: AppRole;
   onNavigate: (screen: AppScreen) => void;
 }
 
@@ -16,7 +18,9 @@ const items: Array<{ screen: AppScreen; label: string }> = [
   { screen: 'admin-catalogs', label: 'Catalogos' },
 ];
 
-export function Sidebar({ active, compact, onNavigate }: SidebarProps) {
+export function Sidebar({ active, compact, role, onNavigate }: SidebarProps) {
+  const visibleItems = items.filter((item) => canAccessScreen(role, item.screen));
+
   return (
     <View style={[styles.sidebar, compact && styles.compact]}>
       <View style={styles.logoBlock}>
@@ -24,7 +28,7 @@ export function Sidebar({ active, compact, onNavigate }: SidebarProps) {
         {!compact && <Text style={styles.tagline}>MedConnect</Text>}
       </View>
       <View style={[styles.nav, compact && styles.navCompact]}>
-        {items.map((item) => {
+        {visibleItems.map((item) => {
           const selected = active === item.screen;
           return (
             <Pressable

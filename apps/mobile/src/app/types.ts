@@ -1,4 +1,4 @@
-export type AppRole = 'visitador' | 'supervisor' | 'admin' | 'facturacion';
+export type AppRole = 'visitador' | 'supervisor' | 'facturacion' | 'jefe' | 'admin';
 
 export type AppScreen =
   | 'splash'

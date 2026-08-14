@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Lock, User } from 'lucide-react-native';
 import { SessionUser } from '../app/types';
+import { api } from '../services/api';
+import { saveSession } from '../services/session';
 import { colors, radius, spacing } from '../theme/theme';
 
 interface LoginScreenProps {
@@ -11,15 +13,34 @@ interface LoginScreenProps {
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('admin@prism.com');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const { width, height } = useWindowDimensions();
   const landscape = width > height && width >= 840;
 
-  const submit = () => {
-    onLogin({
-      name: email.toLowerCase().includes('admin') ? 'Administrador Prism' : 'Daniella Morales',
-      email,
-      role: email.toLowerCase().includes('admin') ? 'admin' : 'visitador',
-    });
+  const submit = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const session = await api.login(email, password);
+      const nextUser: SessionUser = {
+        name: session.user.name,
+        email: session.user.email,
+        role: session.user.role,
+      };
+
+      await saveSession({
+        token: session.token,
+        user: nextUser,
+      });
+
+      onLogin(nextUser);
+    } catch {
+      setError('Credenciales invalidas o API no disponible.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,11 +92,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </View>
           </View>
 
-          <Pressable onPress={submit} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}>
-            <Text style={styles.buttonText}>Ingresar al sistema</Text>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <Pressable disabled={loading} onPress={submit} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, loading && styles.buttonDisabled]}>
+            <Text style={styles.buttonText}>{loading ? 'Validando...' : 'Ingresar al sistema'}</Text>
           </Pressable>
 
-          <Text style={styles.hint}>Usa admin@prism.com para ver permisos administrativos.</Text>
+          <Text style={styles.hint}>Usa el usuario administrador creado en MongoDB.</Text>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -186,6 +209,9 @@ const styles = StyleSheet.create({
   buttonPressed: {
     backgroundColor: colors.primaryDark,
   },
+  buttonDisabled: {
+    opacity: 0.72,
+  },
   buttonText: {
     color: colors.onPrimary,
     fontSize: 16,
@@ -196,5 +222,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: spacing.lg,
+  },
+  error: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
 });

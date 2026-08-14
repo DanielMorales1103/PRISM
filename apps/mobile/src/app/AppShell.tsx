@@ -1,21 +1,37 @@
-import { useCallback, useState } from 'react';
-import { SafeAreaView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, SafeAreaView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { Sidebar } from '../components/Sidebar';
+import { canAccessScreen } from './permissions';
 import { AppScreen, SessionUser } from './types';
 import { colors } from '../theme/theme';
+import { loadSession } from '../services/session';
 
 export function AppShell() {
   const [screen, setScreen] = useState<AppScreen>('splash');
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(false);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
 
   const handleSplashDone = useCallback(() => {
-    setScreen('login');
+    setCheckingSession(true);
+    void loadSession()
+      .then((session) => {
+        if (session) {
+          setUser(session.user);
+          setScreen('home');
+          return;
+        }
+
+        setScreen('login');
+      })
+      .finally(() => {
+        setCheckingSession(false);
+      });
   }, []);
 
   const handleLogin = (nextUser: SessionUser) => {
@@ -27,20 +43,32 @@ export function AppShell() {
     return <SplashScreen onDone={handleSplashDone} />;
   }
 
+  if (checkingSession) {
+    return (
+      <SafeAreaView style={styles.loading}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </SafeAreaView>
+    );
+  }
+
   if (screen === 'login' || !user) {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
   const renderScreen = () => {
+    if (!canAccessScreen(user.role, screen)) {
+      return <HomeScreen user={user} onNavigate={setScreen} />;
+    }
+
     switch (screen) {
       case 'admin-users':
-        return <AdminScreen type="users" />;
+        return <AdminScreen currentUser={user} type="users" />;
       case 'admin-products':
-        return <AdminScreen type="products" />;
+        return <AdminScreen currentUser={user} type="products" />;
       case 'admin-catalogs':
-        return <AdminScreen type="catalogs" />;
+        return <AdminScreen currentUser={user} type="catalogs" />;
       case 'dashboard':
-        return <AdminScreen type="dashboard" />;
+        return <AdminScreen currentUser={user} type="dashboard" />;
       case 'home':
       default:
         return <HomeScreen user={user} onNavigate={setScreen} />;
@@ -50,7 +78,7 @@ export function AppShell() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.shell, compactNav && styles.shellCompact]}>
-        <Sidebar active={screen} compact={compactNav} onNavigate={setScreen} />
+        <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} />
         <View style={styles.content}>{renderScreen()}</View>
       </View>
     </SafeAreaView>
@@ -72,5 +100,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
   },
 });

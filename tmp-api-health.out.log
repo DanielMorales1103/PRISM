@@ -1,0 +1,62 @@
+
+> @prism/api@0.1.0 dev C:\Users\pc\Documents\personal\PRISM\PRISM\apps\api
+> tsx watch src/index.ts
+
+◇ injected env (8) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+Prism API listening on http://localhost:4000
+2:45:29 p. m. [tsx] change in ./src\index.ts Rerunning...
+◇ injected env (8) from .env // tip: ⌘ override existing { override: true }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+Prism API listening on http://localhost:4000
+2:46:55 p. m. [tsx] change in ./src\routes\dashboard.routes.ts Restarting...
+◇ injected env (8) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+6:17:08 p. m. [tsx] change in ./src\database\connection.ts Rerunning...
+◇ injected env (8) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected
+6:17:15 p. m. [tsx] unlink in ./src\index.ts Restarting...
+6:17:18 p. m. [tsx] change in ./src\index.ts Rerunning...
+◇ injected env (8) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+10:56:42 a. m. [tsx] change in ./src\config\env.ts Rerunning...
+10:56:47 a. m. [tsx] change in ./src\app.ts Restarting...
+◇ injected env (8) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+1:12:18 p. m. [tsx] change in ./src\constants\domain.ts Rerunning...
+◇ injected env (8) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+Prism API listening on http://localhost:4000
+1:17:49 p. m. [tsx] change in ./src\routes\user.routes.ts Restarting...
+◇ injected env (8) from .env // tip: ⌘ suppress logs { quiet: true }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+1:50:04 p. m. [tsx] change in ./src\routes\user.routes.ts Rerunning...
+◇ injected env (8) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
+Prism API listening on http://localhost:4000
+C:\Users\pc\Documents\personal\PRISM\PRISM\apps\api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @prism/api@0.1.0 dev: `tsx watch src/index.ts`
+Exit status 1073807364
+ seed completed
+Prism API listening on http://localhost:4000
+1:50:04 p. m. [tsx] change in ./src\routes\user.routes.ts Rerunning...
+◇ injected env (8) from .env // tip: ⌘ suppress logs { quiet: true }
+MongoDB connected
+MongoDB collections and indexes are ready
+Initial seed completed
