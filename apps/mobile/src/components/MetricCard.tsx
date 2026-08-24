@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../theme/theme';
+import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface MetricCardProps {
   label: string;
@@ -30,14 +30,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.lg,
     alignItems: 'center',
+    minHeight: 136,
+    ...shadows.card,
   },
   iconWrap: {
-    width: 48,
-    height: 48,
+    width: 60,
+    height: 60,
     borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
@@ -54,8 +56,8 @@ const styles = StyleSheet.create({
   },
   value: {
     color: colors.text,
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 30,
+    fontWeight: '900',
     marginTop: 2,
   },
   detail: {

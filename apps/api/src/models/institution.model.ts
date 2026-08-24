@@ -14,6 +14,8 @@ const InstitutionSchema = new Schema(
     schedule: { type: ContactScheduleSchema },
     location: { type: LocationSchema },
     active: { type: Boolean, default: true, index: true },
+    deletedAt: { type: Date },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
@@ -21,3 +23,4 @@ const InstitutionSchema = new Schema(
 InstitutionSchema.index({ name: 'text', address: 'text', contactName: 'text' });
 
 export const InstitutionModel = model('Institution', InstitutionSchema);
+

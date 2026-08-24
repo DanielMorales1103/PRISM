@@ -1,6 +1,20 @@
-import { LogOut } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  BarChart3,
+  BookOpenCheck,
+  CreditCard,
+  History,
+  Home,
+  LogOut,
+  Map,
+  Megaphone,
+  PackagePlus,
+  Settings,
+  Users,
+} from 'lucide-react-native';
+import { ComponentType } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { canAccessScreen } from '../app/permissions';
+import { getRoleLabel } from '../app/roleLabels';
 import { AppRole, AppScreen } from '../app/types';
 import { colors, radius, spacing } from '../theme/theme';
 
@@ -12,19 +26,17 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-const items: Array<{ screen: AppScreen; label: string }> = [
-  { screen: 'home', label: 'Inicio' },
-  { screen: 'dashboard', label: 'KPIs' },
-  { screen: 'clients', label: 'Clientes' },
-  { screen: 'planner', label: 'Planificador' },
-  { screen: 'map', label: 'Mapa' },
-  { screen: 'visits', label: 'Visitas' },
-  { screen: 'marketing', label: 'Marketing' },
-  { screen: 'coaching', label: 'Coaching' },
-  { screen: 'billing', label: 'Ventas/Cobros' },
-  { screen: 'admin-users', label: 'Usuarios' },
-  { screen: 'admin-products', label: 'Productos' },
-  { screen: 'admin-catalogs', label: 'Catalogos' },
+const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ size: number; color: string }> }> = [
+  { screen: 'home', label: 'Inicio', icon: Home },
+  { screen: 'dashboard', label: 'KPIs Comerciales', icon: BarChart3 },
+  { screen: 'clients', label: 'Clientes', icon: Users },
+  { screen: 'map', label: 'Mapa Inteligente', icon: Map },
+  { screen: 'visits', label: 'Historial CRM', icon: History },
+  { screen: 'marketing', label: 'Marketing', icon: Megaphone },
+  { screen: 'coaching', label: 'Coaching', icon: BookOpenCheck },
+  { screen: 'billing', label: 'Ventas/Cobros', icon: CreditCard },
+  { screen: 'admin-users', label: 'Usuarios', icon: Settings },
+  { screen: 'admin-products', label: 'Productos', icon: PackagePlus },
 ];
 
 export function Sidebar({ active, compact, role, onNavigate, onLogout }: SidebarProps) {
@@ -35,22 +47,28 @@ export function Sidebar({ active, compact, role, onNavigate, onLogout }: Sidebar
       <View style={styles.logoBlock}>
         <Text style={styles.logo}>PRISM</Text>
         {!compact && <Text style={styles.tagline}>MedConnect</Text>}
-        {!compact && <Text style={styles.roleLabel}>{role}</Text>}
+        {!compact && <Text style={styles.roleLabel}>{getRoleLabel(role)}</Text>}
       </View>
-      <View style={[styles.nav, compact && styles.navCompact]}>
+      <ScrollView
+        contentContainerStyle={[styles.nav, compact && styles.navCompact]}
+        showsVerticalScrollIndicator={false}
+        style={styles.navScroll}
+      >
         {visibleItems.map((item) => {
           const selected = active === item.screen;
+          const Icon = item.icon;
           return (
             <Pressable
               key={item.screen}
               onPress={() => onNavigate(item.screen)}
               style={[styles.navItem, selected && styles.navItemActive, compact && styles.navItemCompact]}
             >
+              <Icon size={22} color={selected ? colors.primary : colors.muted} />
               <Text style={[styles.navText, selected && styles.navTextActive]}>{item.label}</Text>
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
       <Pressable onPress={onLogout} style={[styles.logout, compact && styles.logoutCompact]}>
         <LogOut size={17} color={colors.muted} />
         <Text style={styles.logoutText}>Salir</Text>
@@ -107,6 +125,10 @@ const styles = StyleSheet.create({
   },
   nav: {
     gap: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  navScroll: {
+    flex: 1,
   },
   navCompact: {
     flexDirection: 'row',
@@ -116,7 +138,10 @@ const styles = StyleSheet.create({
     minHeight: 46,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    justifyContent: 'flex-start',
   },
   navItemCompact: {
     minHeight: 38,
@@ -133,7 +158,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   logout: {
-    marginTop: 'auto',
     minHeight: 44,
     borderRadius: radius.md,
     borderWidth: 1,

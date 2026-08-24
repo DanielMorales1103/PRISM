@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.routes.js';
 import { catalogRouter } from './routes/catalog.routes.js';
 import { clientRouter } from './routes/client.routes.js';
 import { dashboardRouter } from './routes/dashboard.routes.js';
+import { presentationVisitRouter } from './routes/presentation-visit.routes.js';
 import { productRouter } from './routes/product.routes.js';
 import { userRouter } from './routes/user.routes.js';
 import { seedInitialData } from './seeds/initial.seed.js';
@@ -75,6 +76,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/catalogs', catalogRouter);
 app.use('/api/clients', clientRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/presentation-visits', presentationVisitRouter);
 app.use('/api/products', productRouter);
 app.use('/api/users', userRouter);
 

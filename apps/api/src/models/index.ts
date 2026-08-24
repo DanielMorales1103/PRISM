@@ -3,6 +3,7 @@ import { DoctorModel } from './doctor.model.js';
 import { EvaluationResultModel } from './evaluation-result.model.js';
 import { InstitutionModel } from './institution.model.js';
 import { PharmacyModel } from './pharmacy.model.js';
+import { PresentationVisitModel } from './presentation-visit.model.js';
 import { ProductModel } from './product.model.js';
 import { SpecialtyModel } from './specialty.model.js';
 import { SyncLogModel } from './sync-log.model.js';
@@ -19,6 +20,7 @@ export const models = [
   DoctorModel,
   PharmacyModel,
   InstitutionModel,
+  PresentationVisitModel,
   VisitPlanModel,
   VisitModel,
   TrainingModel,

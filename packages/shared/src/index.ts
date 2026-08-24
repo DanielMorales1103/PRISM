@@ -29,6 +29,7 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   active: boolean;
+  deletedAt?: string;
 }
 
 export interface Specialty {
@@ -54,6 +55,8 @@ export interface Product {
   presentation: string;
   composition?: string;
   dosage?: string;
+  details?: string;
+  imageUrl?: string;
   active: boolean;
 }
 
@@ -66,18 +69,24 @@ export interface ClientBase {
   assignedUserId?: string;
   location?: GeoLocation;
   active: boolean;
+  deletedAt?: string;
 }
 
 export interface Doctor extends ClientBase {
   type: 'doctor';
   collegiateNumber?: string;
   specialtyId?: string;
+  specialty?: string;
   subSpecialty?: string;
+  hospitalOrClinic?: string;
+  birthDate?: string;
   clinicPhone?: string;
   mobilePhone?: string;
+  emailOrSocial?: string;
   visitDays?: string[];
   visitHours?: string;
   secretaryName?: string;
+  secretaryBirthDate?: string;
 }
 
 export interface Pharmacy extends ClientBase {
@@ -87,6 +96,7 @@ export interface Pharmacy extends ClientBase {
   purchaseManager?: string;
   phone?: string;
   mobilePhone?: string;
+  emailOrSocial?: string;
   visitDays?: string[];
   visitHours?: string;
 }
@@ -95,6 +105,7 @@ export interface Institution extends ClientBase {
   type: 'institution';
   phone?: string;
   contactName?: string;
+  emailOrSocial?: string;
   visitDays?: string[];
   visitHours?: string;
 }

@@ -4,6 +4,14 @@ const screenPermissions: Record<AppScreen, AppRole[]> = {
   splash: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   login: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   home: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
+  'new-visit': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'product-selection': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'experience-digital': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'interactive-presentation': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'storytelling-presentation': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'medical-evidence': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'visit-result': ['visitador', 'supervisor', 'jefe', 'admin'],
+  'visit-comments': ['visitador', 'supervisor', 'jefe', 'admin'],
   dashboard: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   clients: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   planner: ['visitador', 'supervisor', 'jefe', 'admin'],
@@ -28,3 +36,8 @@ export function canManageUsers(role: AppRole) {
 export function canManageCatalogs(role: AppRole) {
   return role === 'admin' || role === 'jefe';
 }
+
+export function canManageClients(role: AppRole) {
+  return role === 'admin' || role === 'jefe';
+}
+

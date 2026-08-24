@@ -1,12 +1,15 @@
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { BarChart3, BookOpenCheck, CalendarDays, ClipboardList, CreditCard, MapPinned, Megaphone, Users } from 'lucide-react-native';
-import { AppRole, AppScreen } from '../app/types';
+import { AppRole } from '../app/types';
+import { getRoleLabel } from '../app/roleLabels';
 import { MetricCard } from '../components/MetricCard';
 import { colors, radius, spacing } from '../theme/theme';
 
+type ModuleScreenType = 'clients' | 'planner' | 'map' | 'visits' | 'marketing' | 'coaching' | 'billing';
+
 interface ModuleScreenProps {
   role: AppRole;
-  type: Exclude<AppScreen, 'splash' | 'login' | 'home' | 'dashboard' | 'admin-users' | 'admin-products' | 'admin-catalogs'>;
+  type: ModuleScreenType;
 }
 
 const moduleCopy = {
@@ -115,7 +118,7 @@ export function ModuleScreen({ role, type }: ModuleScreenProps) {
       </View>
 
       <View style={styles.metricsGrid}>
-        <MetricCard label="Vista" value={role} detail="Permisos aplicados" icon={<BarChart3 size={25} color={colors.primary} />} />
+        <MetricCard label="Vista" value={getRoleLabel(role)} detail="Permisos aplicados" icon={<BarChart3 size={25} color={colors.primary} />} />
         <MetricCard label="Registros" value="0" detail="Pendiente de datos reales" icon={<ClipboardList size={25} color={colors.primary} />} />
         <MetricCard label="Estado" value="Base" detail="Fase 1 visual" icon={<Icon size={25} color={colors.primary} />} />
       </View>

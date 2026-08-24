@@ -16,11 +16,14 @@ const DoctorSchema = new Schema(
     clinicPhone: { type: String, trim: true },
     mobilePhone: { type: String, trim: true },
     emailOrSocial: { type: String, trim: true },
+    specialty: { type: String, trim: true },
     secretaryName: { type: String, trim: true },
     secretaryBirthDate: { type: Date },
     schedule: { type: ContactScheduleSchema },
     location: { type: LocationSchema },
     active: { type: Boolean, default: true, index: true },
+    deletedAt: { type: Date },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
@@ -28,3 +31,4 @@ const DoctorSchema = new Schema(
 DoctorSchema.index({ fullName: 'text', collegiateNumber: 'text', address: 'text' });
 
 export const DoctorModel = model('Doctor', DoctorSchema);
+

@@ -8,6 +8,7 @@ const ProductSchema = new Schema(
     composition: { type: String, trim: true },
     dosage: { type: String, trim: true },
     details: { type: String, trim: true },
+    imageUrl: { type: String, trim: true },
     active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true },

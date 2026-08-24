@@ -9,6 +9,8 @@ const UserSchema = new Schema(
     role: { type: String, enum: userRoles, required: true, index: true },
     active: { type: Boolean, default: true, index: true },
     lastLoginAt: { type: Date },
+    deletedAt: { type: Date },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );

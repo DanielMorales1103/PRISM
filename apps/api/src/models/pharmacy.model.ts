@@ -18,6 +18,8 @@ const PharmacySchema = new Schema(
     schedule: { type: ContactScheduleSchema },
     location: { type: LocationSchema },
     active: { type: Boolean, default: true, index: true },
+    deletedAt: { type: Date },
+    deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );
@@ -25,3 +27,4 @@ const PharmacySchema = new Schema(
 PharmacySchema.index({ name: 'text', nit: 'text', address: 'text' });
 
 export const PharmacyModel = model('Pharmacy', PharmacySchema);
+

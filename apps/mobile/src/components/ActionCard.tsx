@@ -1,13 +1,13 @@
 import { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
-import { colors, radius, spacing } from '../theme/theme';
+import { Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
+import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface ActionCardProps {
   title: string;
   subtitle: string;
   icon: ReactNode;
   prominent?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
 }
 
@@ -40,6 +40,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     padding: spacing.lg,
     justifyContent: 'space-between',
+    ...shadows.card,
   },
   prominent: {
     backgroundColor: colors.primary,
@@ -51,8 +52,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
     marginTop: spacing.md,
   },
   subtitle: {

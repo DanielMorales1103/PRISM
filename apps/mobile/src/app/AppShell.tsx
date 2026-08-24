@@ -1,20 +1,65 @@
+import type { Product } from '@prism/shared';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
+import { AgendaScreen } from '../screens/AgendaScreen';
+import { ClientsScreen } from '../screens/ClientsScreen';
+import { ExperienceDigitalScreen } from '../screens/ExperienceDigitalScreen';
 import { HomeScreen } from '../screens/HomeScreen';
+import { InteractivePresentationScreen } from '../screens/InteractivePresentationScreen';
+import { KpiDashboardScreen } from '../screens/KpiDashboardScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { MedicalEvidenceScreen } from '../screens/MedicalEvidenceScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
+import { NewVisitScreen } from '../screens/NewVisitScreen';
+import { ProductSelectionScreen } from '../screens/ProductSelectionScreen';
 import { SplashScreen } from '../screens/SplashScreen';
+import { StorytellingPresentationScreen } from '../screens/StorytellingPresentationScreen';
+import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
+import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
 import { Sidebar } from '../components/Sidebar';
 import { canAccessScreen } from './permissions';
-import { AppScreen, SessionUser } from './types';
+import { AppScreen, SessionUser, VisitDoctorSnapshot } from './types';
 import { colors } from '../theme/theme';
-import { clearSession, loadSession } from '../services/session';
+import { api } from '../services/api';
+import { clearSession, loadSession, loadToken } from '../services/session';
+
+interface VisitDraft {
+  doctor?: VisitDoctorSnapshot;
+  product?: Product;
+  presentedFlows?: PresentedFlowDraft[];
+  result?: VisitResultDraft;
+}
+
+type PresentationFlowType = 'interactive' | 'storytelling' | 'clinical';
+
+interface PresentedFlowDraft {
+  type: PresentationFlowType;
+  productId?: string;
+  productName?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+const fullScreenFlow: AppScreen[] = [
+  'new-visit',
+  'product-selection',
+  'experience-digital',
+  'interactive-presentation',
+  'storytelling-presentation',
+  'medical-evidence',
+  'visit-result',
+  'visit-comments',
+  'dashboard',
+  'planner',
+];
 
 export function AppShell() {
   const [screen, setScreen] = useState<AppScreen>('splash');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(false);
+  const [visitDraft, setVisitDraft] = useState<VisitDraft>({});
+  const [savingVisit, setSavingVisit] = useState(false);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
 
@@ -47,6 +92,89 @@ export function AppShell() {
     });
   };
 
+  const startPresentedFlow = (type: PresentationFlowType) => {
+    const startedAt = new Date().toISOString();
+
+    setVisitDraft((current) => ({
+      ...current,
+      presentedFlows: [
+        ...(current.presentedFlows ?? []),
+        {
+          type,
+          productId: current.product?.id,
+          productName: current.product?.name,
+          startedAt,
+        },
+      ],
+    }));
+  };
+
+  const completeLatestPresentedFlow = () => {
+    const completedAt = new Date().toISOString();
+
+    setVisitDraft((current) => {
+      const presentedFlows = [...(current.presentedFlows ?? [])];
+      const latestIndex = presentedFlows.findLastIndex((flow) => !flow.completedAt);
+
+      if (latestIndex >= 0) {
+        presentedFlows[latestIndex] = {
+          ...presentedFlows[latestIndex],
+          completedAt,
+        };
+      }
+
+      return {
+        ...current,
+        presentedFlows,
+      };
+    });
+  };
+
+  const handleSaveVisit = async (comments: { finalComments: string; requiresFollowUp: boolean; urgentRequest: boolean }) => {
+    if (!visitDraft.result) {
+      Alert.alert('Visita incompleta', 'Falta registrar el resultado de la visita.');
+      return;
+    }
+
+    setSavingVisit(true);
+
+    try {
+      const token = await loadToken();
+
+      if (!token) {
+        throw new Error('Missing token');
+      }
+
+      await api.savePresentationVisit(token, {
+        doctorName: visitDraft.doctor?.name,
+        doctorSpecialty: visitDraft.doctor?.specialty,
+        clinic: visitDraft.doctor?.clinic,
+        address: visitDraft.doctor?.address,
+        productId: visitDraft.product?.id,
+        productName: visitDraft.product?.name,
+        productLine: visitDraft.product?.line,
+        presentedFlows: visitDraft.presentedFlows ?? [],
+        finalFlowType: visitDraft.presentedFlows?.at(-1)?.type,
+        visitStatus: visitDraft.result.visitStatus,
+        requestedProducts: visitDraft.result.requestedProducts,
+        probablePurchaseDate: visitDraft.result.probablePurchaseDate,
+        competitionDetected: visitDraft.result.competitionDetected,
+        interestLevel: visitDraft.result.interestLevel,
+        requiresFollowUp: comments.requiresFollowUp,
+        urgentRequest: comments.urgentRequest,
+        finalComments: comments.finalComments,
+      });
+
+      setVisitDraft({});
+      setScreen('home');
+      Alert.alert('Visita guardada', 'La visita fue guardada correctamente en el CRM.');
+    } catch {
+      Alert.alert('No se pudo guardar', 'Revisa la conexion con el API e intenta de nuevo.');
+    } finally {
+      setSavingVisit(false);
+    }
+  };
+
   if (screen === 'splash') {
     return <SplashScreen onDone={handleSplashDone} />;
   }
@@ -76,9 +204,121 @@ export function AppShell() {
       case 'admin-catalogs':
         return <AdminScreen currentUser={user} type="catalogs" />;
       case 'dashboard':
-        return <AdminScreen currentUser={user} type="dashboard" />;
-      case 'clients':
+        return <KpiDashboardScreen onBack={() => setScreen('home')} />;
       case 'planner':
+        return <AgendaScreen onBack={() => setScreen('home')} />;
+      case 'new-visit':
+        return (
+          <NewVisitScreen
+            onBack={() => setScreen('home')}
+            onContinue={(doctor) => {
+              setVisitDraft((current) => ({ ...current, doctor }));
+              setScreen('product-selection');
+            }}
+          />
+        );
+      case 'product-selection':
+        return (
+          <ProductSelectionScreen
+            onBack={() => setScreen('new-visit')}
+            onSelectProduct={(product) => {
+              setVisitDraft((current) => ({ ...current, product }));
+              setScreen('experience-digital');
+            }}
+          />
+        );
+      case 'experience-digital':
+        if (!visitDraft.product) {
+          return (
+            <ProductSelectionScreen
+              onBack={() => setScreen('new-visit')}
+              onSelectProduct={(product) => {
+                setVisitDraft((current) => ({ ...current, product }));
+                setScreen('experience-digital');
+              }}
+            />
+          );
+        }
+
+        return (
+          <ExperienceDigitalScreen
+            product={visitDraft.product}
+            onBack={() => setScreen('product-selection')}
+            onStartInteractive={() => {
+              startPresentedFlow('interactive');
+              setScreen('interactive-presentation');
+            }}
+            onStartStorytelling={() => {
+              startPresentedFlow('storytelling');
+              setScreen('storytelling-presentation');
+            }}
+            onStartEvidence={() => {
+              startPresentedFlow('clinical');
+              setScreen('medical-evidence');
+            }}
+          />
+        );
+      case 'interactive-presentation':
+        if (!visitDraft.product) {
+          setScreen('product-selection');
+          return null;
+        }
+
+        return (
+          <InteractivePresentationScreen
+            product={visitDraft.product}
+            onClose={() => setScreen('experience-digital')}
+            onFinish={() => {
+              completeLatestPresentedFlow();
+              setScreen('visit-result');
+            }}
+          />
+        );
+      case 'storytelling-presentation':
+        if (!visitDraft.product) {
+          setScreen('product-selection');
+          return null;
+        }
+
+        return (
+          <StorytellingPresentationScreen
+            product={visitDraft.product}
+            onClose={() => setScreen('experience-digital')}
+            onFinish={() => {
+              completeLatestPresentedFlow();
+              setScreen('visit-result');
+            }}
+          />
+        );
+      case 'medical-evidence':
+        if (!visitDraft.product) {
+          setScreen('product-selection');
+          return null;
+        }
+
+        return (
+          <MedicalEvidenceScreen
+            product={visitDraft.product}
+            onClose={() => setScreen('experience-digital')}
+            onContinue={() => {
+              completeLatestPresentedFlow();
+              setScreen('visit-result');
+            }}
+          />
+        );
+      case 'visit-result':
+        return (
+          <VisitResultScreen
+            onContinue={(result) => {
+              setVisitDraft((current) => ({ ...current, result }));
+              setScreen('visit-comments');
+            }}
+          />
+        );
+      case 'visit-comments':
+        return <VisitCommentsScreen saving={savingVisit} onBack={() => setScreen('visit-result')} onSave={handleSaveVisit} />;
+      case 'clients':
+        return <ClientsScreen currentUser={user} />;
       case 'map':
       case 'visits':
       case 'marketing':
@@ -93,10 +333,14 @@ export function AppShell() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.shell, compactNav && styles.shellCompact]}>
-        <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} onLogout={handleLogout} />
-        <View style={styles.content}>{renderScreen()}</View>
-      </View>
+      {fullScreenFlow.includes(screen) ? (
+        renderScreen()
+      ) : (
+        <View style={[styles.shell, compactNav && styles.shellCompact]}>
+          <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} onLogout={handleLogout} />
+          <View style={styles.content}>{renderScreen()}</View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -124,3 +368,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 });
+

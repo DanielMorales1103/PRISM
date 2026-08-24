@@ -1,5 +1,18 @@
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { Activity, BookOpenCheck, Calendar, CreditCard, Map, Megaphone, PackagePlus, PlusCircle, TrendingUp, Users } from 'lucide-react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Activity,
+  BookOpenCheck,
+  CalendarDays,
+  ChevronRight,
+  CreditCard,
+  Map,
+  Megaphone,
+  PackagePlus,
+  PlusCircle,
+  TrendingUp,
+  Trophy,
+  Users,
+} from 'lucide-react-native';
 import { ActionCard } from '../components/ActionCard';
 import { MetricCard } from '../components/MetricCard';
 import { canManageCatalogs } from '../app/permissions';
@@ -17,6 +30,13 @@ const agenda = [
   { name: 'Farmacia San Pablo', meta: 'Tipo A - Zona 10', time: '17:00', priority: 'Alta' },
 ];
 
+const formattedDate = new Intl.DateTimeFormat('es-GT', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+}).format(new Date());
+
 export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 920;
@@ -31,16 +51,32 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
       : isExecutive
         ? 'Consulta indicadores consolidados y administra configuraciones del CRM.'
         : 'Tienes 4 visitas prioritarias y 2 pendientes de sincronizar.';
+  const quickActions = [
+    { title: 'Mapa', subtitle: 'Optimiza tu ruta', icon: <Map size={34} color={colors.primary} />, screen: 'map' as const, visible: !isBilling },
+    { title: 'Ranking', subtitle: 'Top visitadores', icon: <Trophy size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: isSupervisor || isExecutive },
+    { title: 'Historial', subtitle: 'CRM medico', icon: <Activity size={34} color={colors.text} />, screen: 'visits' as const, visible: !isBilling },
+    { title: 'Reportes', subtitle: 'Analitica real', icon: <TrendingUp size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: true },
+    { title: 'Clientes', subtitle: 'Medicos y farmacias', icon: <Users size={34} color={colors.primary} />, screen: 'clients' as const, visible: isBilling },
+    { title: 'Cobros', subtitle: 'Ventas y cartera', icon: <CreditCard size={34} color={colors.primary} />, screen: 'billing' as const, visible: isBilling },
+  ].filter((action) => action.visible).slice(0, 4);
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.header, wide && styles.headerWide]}>
         <View>
-          <Text style={styles.greeting}>Hola, {user.name}</Text>
-          <Text style={styles.subhead}>{subhead}</Text>
+          <Text style={styles.greeting}>
+            Hola, <Text style={styles.greetingName}>{user.name}</Text>
+          </Text>
+          <Text style={styles.subhead}>{formattedDate} - {subhead}</Text>
         </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user.name.slice(0, 2).toUpperCase()}</Text>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => onNavigate('planner')} style={({ pressed }) => [styles.calendarButton, pressed && styles.pressed]}>
+            <CalendarDays size={23} color={colors.text} />
+            <View style={styles.notificationDot} />
+          </Pressable>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{user.name.slice(0, 2).toUpperCase()}</Text>
+          </View>
         </View>
       </View>
 
@@ -50,28 +86,30 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
         <MetricCard label="Cobertura" value="74%" detail="Medicos A/B/C" icon={<TrendingUp size={25} color={colors.primary} />} />
       </View>
 
-      <View style={[styles.actions, wide && styles.actionsWide]}>
-        {!isBilling && (
-          <ActionCard
-            prominent
-            title={isSupervisor || isExecutive ? 'Seguimiento de visitas' : 'Nueva visita medica'}
-            subtitle={isSupervisor || isExecutive ? 'Revisa formularios, cobertura y observaciones.' : 'Registra visita, muestras y observaciones.'}
-            icon={<PlusCircle size={34} color={colors.onPrimary} />}
-            onPress={() => onNavigate('visits')}
-          />
-        )}
-        {isBilling && (
-          <ActionCard
-            prominent
-            title="Ventas y cobros"
-            subtitle="Consulta cobros, notas de credito y devoluciones."
-            icon={<CreditCard size={34} color={colors.onPrimary} />}
-            onPress={() => onNavigate('billing')}
-          />
-        )}
-        <ActionCard title="Clientes" subtitle="Medicos, farmacias e instituciones." icon={<Users size={32} color={colors.primary} />} onPress={() => onNavigate('clients')} />
-        {!isBilling && <ActionCard title="Agenda" subtitle="Planificador diario y semanal." icon={<Calendar size={32} color={colors.primary} />} onPress={() => onNavigate('planner')} />}
-        {!isBilling && <ActionCard title="Mapa" subtitle="Ubicaciones y rutas asignadas." icon={<Map size={32} color={colors.primary} />} onPress={() => onNavigate('map')} />}
+      <View style={[styles.heroActions, wide && styles.heroActionsWide]}>
+        <ActionCard
+          prominent
+          title={isBilling ? 'Ventas y cobros' : 'Nueva Visita Medica'}
+          subtitle={isBilling ? 'Consulta cobros, notas de credito y devoluciones.' : 'Inicia una presentacion interactiva ahora mismo.'}
+          icon={isBilling ? <CreditCard size={42} color={colors.onPrimary} /> : <PlusCircle size={42} color={colors.onPrimary} />}
+          style={[styles.primaryAction, wide && styles.primaryActionWide]}
+          onPress={() => onNavigate(isBilling ? 'billing' : 'new-visit')}
+        />
+        <View style={[styles.quickGrid, wide && styles.quickGridWide]}>
+          {quickActions.map((action) => (
+            <ActionCard
+              key={action.title}
+              title={action.title}
+              subtitle={action.subtitle}
+              icon={action.icon}
+              style={styles.quickCard}
+              onPress={() => onNavigate(action.screen)}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.secondaryActions, wide && styles.secondaryActionsWide]}>
         {!isBilling && <ActionCard title="Marketing" subtitle="Reja promocional y muestras." icon={<Megaphone size={32} color={colors.primary} />} onPress={() => onNavigate('marketing')} />}
         {!isBilling && <ActionCard title="Coaching" subtitle="Capacitaciones y evaluaciones." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
         {canAdminister && (
@@ -100,8 +138,9 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
             </View>
             <View style={styles.visitTimeWrap}>
               <Text style={styles.visitTime}>{visit.time}</Text>
-              <Text style={styles.priority}>{visit.priority}</Text>
+              <Text style={styles.priority}>PRIORIDAD {visit.priority.toUpperCase()}</Text>
             </View>
+            <ChevronRight size={20} color="#B8B8B8" />
           </View>
         ))}
       </View>
@@ -111,7 +150,8 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
     gap: spacing.xl,
   },
   header: {
@@ -127,14 +167,17 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '900',
   },
+  greetingName: {
+    color: colors.primary,
+  },
   subhead: {
     color: colors.muted,
     fontSize: 15,
     marginTop: spacing.xs,
   },
   avatar: {
-    width: 54,
-    height: 54,
+    width: 66,
+    height: 66,
     borderRadius: radius.lg,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
@@ -146,15 +189,69 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '900',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  calendarButton: {
+    width: 60,
+    height: 60,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  notificationDot: {
+    position: 'absolute',
+    right: 10,
+    top: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  actions: {
+  heroActions: {
     gap: spacing.md,
   },
-  actionsWide: {
+  heroActionsWide: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  primaryAction: {
+    minHeight: 250,
+  },
+  primaryActionWide: {
+    flex: 1.25,
+    minHeight: 320,
+  },
+  quickGrid: {
+    gap: spacing.md,
+  },
+  quickGridWide: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  quickCard: {
+    minHeight: 148,
+    minWidth: 220,
+  },
+  secondaryActions: {
+    gap: spacing.md,
+  },
+  secondaryActionsWide: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
@@ -163,7 +260,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.lg,
-    padding: spacing.lg,
+    padding: spacing.xl,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -185,10 +282,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: '#F1F1F2',
     borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
   visitIcon: {
     width: 44,
