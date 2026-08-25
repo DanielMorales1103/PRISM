@@ -21,6 +21,7 @@ type ClientRow = Doctor | Pharmacy | Institution;
 
 interface ClientFormState {
   name: string;
+  category: 'A' | 'B' | 'C' | 'cadena';
   collegiateNumber: string;
   specialty: string;
   subSpecialty: string;
@@ -43,6 +44,7 @@ interface ClientFormState {
 
 const emptyForm: ClientFormState = {
   name: '',
+  category: 'C',
   collegiateNumber: '',
   specialty: '',
   subSpecialty: '',
@@ -164,7 +166,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
       if (createType === 'doctor') {
         const doctor = await api.createDoctor(token, {
           fullName: name,
-          category: 'C',
+          category: form.category === 'cadena' ? 'C' : form.category,
           collegiateNumber: form.collegiateNumber.trim(),
           specialty: form.specialty.trim(),
           subSpecialty: form.subSpecialty.trim(),
@@ -186,7 +188,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
       } else {
         const pharmacy = await api.createPharmacy(token, {
           name,
-          category: 'C',
+          category: form.category,
           nit: form.nit.trim(),
           address,
           ownerName: form.ownerName.trim(),
@@ -288,7 +290,15 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
           </View>
 
           <View style={styles.formGrid}>
-            <Field label={createType === 'doctor' ? 'Nombre completo' : 'Nombre farmacia'} value={form.name} placeholder={createType === 'doctor' ? 'Ej. Dra. Beatriz Mencos' : 'Ej. Farmacia San Pablo'} onChangeText={(value) => updateForm('name', value)} />
+            <NameCategoryField
+              nameLabel={createType === 'doctor' ? 'Nombre completo' : 'Nombre farmacia'}
+              nameValue={form.name}
+              namePlaceholder={createType === 'doctor' ? 'Ej. Dra. Beatriz Mencos' : 'Ej. Farmacia San Pablo'}
+              onNameChange={(value) => updateForm('name', value)}
+              type={createType}
+              categoryValue={form.category}
+              onCategoryChange={(category) => updateForm('category', category)}
+            />
             {createType === 'doctor' ? (
               <>
                 <Field label="Colegiado" value={form.collegiateNumber} placeholder="No. colegiado" onChangeText={(value) => updateForm('collegiateNumber', value)} />
@@ -317,10 +327,10 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
               <>
                 <Field label="Nombre secretaria" value={form.secretaryName} placeholder="Opcional" onChangeText={(value) => updateForm('secretaryName', value)} />
                 <Field label="Fecha nacimiento" value={form.birthDate} placeholder="YYYY-MM-DD" onChangeText={(value) => updateForm('birthDate', value)} />
-                <Field label="Cumple secretaria" value={form.secretaryBirthDate} placeholder="YYYY-MM-DD" onChangeText={(value) => updateForm('secretaryBirthDate', value)} />
+                <Field label="Cumpleaños secretaria" value={form.secretaryBirthDate} placeholder="YYYY-MM-DD" onChangeText={(value) => updateForm('secretaryBirthDate', value)} />
               </>
             ) : (
-              <Field label="Cumple propietario" value={form.ownerBirthDate} placeholder="YYYY-MM-DD" onChangeText={(value) => updateForm('ownerBirthDate', value)} />
+              <Field label="Cumpleaños propietario" value={form.ownerBirthDate} placeholder="YYYY-MM-DD" onChangeText={(value) => updateForm('ownerBirthDate', value)} />
             )}
           </View>
 
@@ -466,11 +476,91 @@ function SummaryCard({ label, value, icon }: { label: string; value: string; ico
   );
 }
 
-function Field({ label, value, placeholder, onChangeText, wide }: { label: string; value: string; placeholder: string; onChangeText: (value: string) => void; wide?: boolean }) {
+function Field({
+  label,
+  value,
+  placeholder,
+  onChangeText,
+  wide,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChangeText: (value: string) => void;
+  wide?: boolean;
+}) {
   return (
     <View style={[styles.fieldGroup, wide && styles.fieldWide]}>
       <Text style={styles.label}>{label}</Text>
       <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9CA3AF" style={styles.input} />
+    </View>
+  );
+}
+
+function NameCategoryField({
+  nameLabel,
+  nameValue,
+  namePlaceholder,
+  onNameChange,
+  type,
+  categoryValue,
+  onCategoryChange,
+}: {
+  nameLabel: string;
+  nameValue: string;
+  namePlaceholder: string;
+  onNameChange: (value: string) => void;
+  type: CreateType;
+  categoryValue: ClientFormState['category'];
+  onCategoryChange: (value: ClientFormState['category']) => void;
+}) {
+  return (
+    <View style={[styles.fieldGroup, styles.fieldWide, styles.nameCategoryGroup]}>
+      <View style={styles.nameCategoryName}>
+        <Text style={styles.label}>{nameLabel}</Text>
+        <TextInput value={nameValue} onChangeText={onNameChange} placeholder={namePlaceholder} placeholderTextColor="#9CA3AF" style={styles.input} />
+      </View>
+      <CategorySelector type={type} value={categoryValue} onChange={onCategoryChange} />
+    </View>
+  );
+}
+
+function CategorySelector({
+  type,
+  value,
+  onChange,
+}: {
+  type: CreateType;
+  value: ClientFormState['category'];
+  onChange: (value: ClientFormState['category']) => void;
+}) {
+  const options = type === 'doctor'
+    ? [
+        { value: 'A', label: 'A' },
+        { value: 'B', label: 'B' },
+        { value: 'C', label: 'C' },
+      ]
+    : [
+        { value: 'A', label: 'A' },
+        { value: 'B', label: 'B' },
+        { value: 'C', label: 'C' },
+        { value: 'cadena', label: 'Cadena' },
+      ];
+
+  return (
+    <View style={styles.categoryGroup}>
+      <Text style={styles.label}>Categoria</Text>
+      <View style={styles.categoryRow}>
+        {options.map((option) => (
+          <Pressable
+            key={option.value}
+            onPress={() => onChange(option.value as ClientFormState['category'])}
+            style={[styles.categoryButton, value === option.value && styles.categoryButtonActive]}
+          >
+            <Text style={[styles.categoryText, value === option.value && styles.categoryTextActive]}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -670,6 +760,13 @@ const styles = StyleSheet.create({
   fieldWide: {
     minWidth: 460,
   },
+  nameCategoryGroup: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  nameCategoryName: {
+    flex: 1,
+  },
   label: {
     color: colors.text,
     fontSize: 13,
@@ -684,6 +781,37 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: spacing.md,
     fontSize: 15,
+  },
+  categoryGroup: {
+    width: 190,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  categoryButton: {
+    minWidth: 50,
+    minHeight: 42,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  categoryButtonActive: {
+    borderColor: '#FFD4C4',
+    backgroundColor: colors.primarySoft,
+  },
+  categoryText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  categoryTextActive: {
+    color: colors.primary,
   },
   formMessage: {
     color: colors.success,

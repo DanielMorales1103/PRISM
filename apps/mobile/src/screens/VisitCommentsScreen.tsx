@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ArrowLeft, CheckCircle2, MessageSquare, Save, UserRound, AlertCircle } from 'lucide-react-native';
 import { colors, shadows, spacing } from '../theme/theme';
 
@@ -27,55 +27,57 @@ export function VisitCommentsScreen({ saving, onBack, onSave }: VisitCommentsScr
         </View>
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.banner}>
-          <View style={styles.bannerIcon}>
-            <MessageSquare size={36} color={colors.onPrimary} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.formShell}>
+          <View style={styles.banner}>
+            <View style={styles.bannerIcon}>
+              <MessageSquare size={36} color={colors.onPrimary} />
+            </View>
+            <View>
+              <Text style={styles.bannerTitle}>Feedback del Medico</Text>
+              <Text style={styles.bannerSubtitle}>Captura reacciones, objeciones y puntos clave.</Text>
+            </View>
           </View>
-          <View>
-            <Text style={styles.bannerTitle}>Feedback del Medico</Text>
-            <Text style={styles.bannerSubtitle}>Captura reacciones, objeciones y puntos clave.</Text>
+
+          <View style={styles.panel}>
+            <Text style={styles.sectionLabel}>TRANSCRIPCION INTELIGENTE</Text>
+            <TextInput
+              value={finalComments}
+              onChangeText={setFinalComments}
+              multiline
+              placeholder="Escribe aqui los comentarios mas relevantes de la visita medica..."
+              placeholderTextColor="#B9B9B9"
+              style={styles.commentInput}
+            />
+
+            <View style={styles.optionsRow}>
+              <Pressable onPress={() => setRequiresFollowUp((current) => !current)} style={styles.optionCard}>
+                <UserRound size={22} color={colors.primary} />
+                <Text style={styles.optionText}>Requiere Seguimiento</Text>
+                <View style={[styles.radio, requiresFollowUp && styles.radioActive]}>
+                  {requiresFollowUp && <CheckCircle2 size={17} color={colors.primary} />}
+                </View>
+              </Pressable>
+              <Pressable onPress={() => setUrgentRequest((current) => !current)} style={styles.optionCard}>
+                <AlertCircle size={22} color="#050505" />
+                <Text style={styles.optionText}>Solicitud Urgente</Text>
+                <View style={[styles.radio, urgentRequest && styles.radioActive]}>
+                  {urgentRequest && <CheckCircle2 size={17} color={colors.primary} />}
+                </View>
+              </Pressable>
+            </View>
           </View>
+
+          <Pressable
+            disabled={saving}
+            onPress={() => onSave({ finalComments, requiresFollowUp, urgentRequest })}
+            style={({ pressed }) => [styles.saveButton, (pressed || saving) && styles.pressed]}
+          >
+            {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Save size={26} color={colors.onPrimary} />}
+            <Text style={styles.saveText}>{saving ? 'Guardando...' : 'Finalizar y Guardar CRM'}</Text>
+          </Pressable>
         </View>
-
-        <View style={styles.panel}>
-          <Text style={styles.sectionLabel}>TRANSCRIPCION INTELIGENTE</Text>
-          <TextInput
-            value={finalComments}
-            onChangeText={setFinalComments}
-            multiline
-            placeholder="Escribe aqui los comentarios mas relevantes de la visita medica..."
-            placeholderTextColor="#B9B9B9"
-            style={styles.commentInput}
-          />
-
-          <View style={styles.optionsRow}>
-            <Pressable onPress={() => setRequiresFollowUp((current) => !current)} style={styles.optionCard}>
-              <UserRound size={22} color={colors.primary} />
-              <Text style={styles.optionText}>Requiere Seguimiento</Text>
-              <View style={[styles.radio, requiresFollowUp && styles.radioActive]}>
-                {requiresFollowUp && <CheckCircle2 size={17} color={colors.primary} />}
-              </View>
-            </Pressable>
-            <Pressable onPress={() => setUrgentRequest((current) => !current)} style={styles.optionCard}>
-              <AlertCircle size={22} color="#050505" />
-              <Text style={styles.optionText}>Solicitud Urgente</Text>
-              <View style={[styles.radio, urgentRequest && styles.radioActive]}>
-                {urgentRequest && <CheckCircle2 size={17} color={colors.primary} />}
-              </View>
-            </Pressable>
-          </View>
-        </View>
-
-        <Pressable
-          disabled={saving}
-          onPress={() => onSave({ finalComments, requiresFollowUp, urgentRequest })}
-          style={({ pressed }) => [styles.saveButton, (pressed || saving) && styles.pressed]}
-        >
-          {saving ? <ActivityIndicator color={colors.onPrimary} /> : <Save size={26} color={colors.onPrimary} />}
-          <Text style={styles.saveText}>{saving ? 'Guardando...' : 'Finalizar y Guardar CRM'}</Text>
-        </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -124,16 +126,20 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   content: {
-    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: 52,
+    paddingBottom: spacing.xxl,
+  },
+  formShell: {
     width: '100%',
     maxWidth: 1120,
-    alignSelf: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
+    gap: spacing.xl,
   },
   banner: {
-    minHeight: 130,
-    borderRadius: 34,
+    minHeight: 128,
+    borderRadius: 32,
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,12 +167,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   panel: {
-    borderRadius: 34,
+    borderRadius: 32,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: 40,
-    marginTop: 50,
     ...shadows.card,
   },
   sectionLabel: {
@@ -233,7 +238,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.md,
-    marginTop: 60,
     ...shadows.card,
   },
   saveText: {

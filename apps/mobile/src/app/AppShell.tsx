@@ -1,6 +1,6 @@
 import type { Product } from '@prism/shared';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
@@ -60,6 +60,7 @@ export function AppShell() {
   const [checkingSession, setCheckingSession] = useState(false);
   const [visitDraft, setVisitDraft] = useState<VisitDraft>({});
   const [savingVisit, setSavingVisit] = useState(false);
+  const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
 
@@ -145,7 +146,7 @@ export function AppShell() {
         throw new Error('Missing token');
       }
 
-      await api.savePresentationVisit(token, {
+      const savedVisit = await api.savePresentationVisit(token, {
         doctorName: visitDraft.doctor?.name,
         doctorSpecialty: visitDraft.doctor?.specialty,
         clinic: visitDraft.doctor?.clinic,
@@ -167,7 +168,7 @@ export function AppShell() {
 
       setVisitDraft({});
       setScreen('home');
-      Alert.alert('Visita guardada', 'La visita fue guardada correctamente en el CRM.');
+      setSavedVisitId(savedVisit.id);
     } catch {
       Alert.alert('No se pudo guardar', 'Revisa la conexion con el API e intenta de nuevo.');
     } finally {
@@ -341,6 +342,19 @@ export function AppShell() {
           <View style={styles.content}>{renderScreen()}</View>
         </View>
       )}
+
+      <Modal transparent visible={savedVisitId !== null} animationType="fade" onRequestClose={() => setSavedVisitId(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Visita guardada</Text>
+            <Text style={styles.modalText}>La visita fue guardada correctamente en el CRM.</Text>
+            {savedVisitId ? <Text style={styles.modalId}>ID: {savedVisitId}</Text> : null}
+            <Pressable onPress={() => setSavedVisitId(null)} style={({ pressed }) => [styles.modalButton, pressed && styles.modalButtonPressed]}>
+              <Text style={styles.modalButtonText}>Aceptar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -366,6 +380,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.48)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 460,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 28,
+    alignItems: 'center',
+    gap: 14,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  modalText: {
+    color: colors.muted,
+    fontSize: 16,
+    lineHeight: 23,
+    textAlign: 'center',
+  },
+  modalId: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  modalButton: {
+    alignSelf: 'stretch',
+    minHeight: 50,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  modalButtonPressed: {
+    backgroundColor: colors.primaryDark,
+  },
+  modalButtonText: {
+    color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '900',
   },
 });
 

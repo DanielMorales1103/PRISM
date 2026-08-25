@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import type { Doctor } from '@prism/shared';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ArrowLeft, Building2, ChevronRight, Cross, LocateFixed, MapPin, Navigation, User } from 'lucide-react-native';
 import { VisitDoctorSnapshot } from '../app/types';
+import { api } from '../services/api';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface NewVisitScreenProps {
@@ -9,7 +11,15 @@ interface NewVisitScreenProps {
   onContinue: (doctor: VisitDoctorSnapshot) => void;
 }
 
-const doctors = [
+interface DoctorOption {
+  id?: string;
+  name: string;
+  specialty: string;
+  clinic: string;
+  address: string;
+}
+
+const fallbackDoctors: DoctorOption[] = [
   {
     name: 'Dr. Ricardo Salinas',
     specialty: 'Dermatologia',
@@ -36,22 +46,56 @@ const doctors = [
   },
 ];
 
+function toDoctorOption(doctor: Doctor): DoctorOption {
+  return {
+    id: doctor.id,
+    name: doctor.name,
+    specialty: doctor.specialty || 'Medicina General',
+    clinic: doctor.hospitalOrClinic || 'Clinica / hospital no especificado',
+    address: doctor.address,
+  };
+}
+
 export function NewVisitScreen({ onBack, onContinue }: NewVisitScreenProps) {
   const [doctorQuery, setDoctorQuery] = useState('');
-  const [selectedDoctor, setSelectedDoctor] = useState<(typeof doctors)[number] | null>(null);
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>(fallbackDoctors);
+  const [selectedDoctor, setSelectedDoctor] = useState<DoctorOption | null>(null);
   const { width, height } = useWindowDimensions();
   const wide = width >= 900 && width > height;
+
+  useEffect(() => {
+    let mounted = true;
+
+    void api.getClients()
+      .then((clients) => {
+        const activeDoctors = clients.doctors.filter((doctor) => doctor.active).map(toDoctorOption);
+
+        if (mounted && activeDoctors.length > 0) {
+          setDoctorOptions(activeDoctors);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setDoctorOptions(fallbackDoctors);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const matchingDoctors = useMemo(() => {
     const normalizedQuery = doctorQuery.trim().toLowerCase();
 
     if (!normalizedQuery) {
-      return doctors;
+      return doctorOptions;
     }
 
-    return doctors.filter((doctor) =>
+    return doctorOptions.filter((doctor) =>
       [doctor.name, doctor.specialty, doctor.clinic, doctor.address].some((value) => value.toLowerCase().includes(normalizedQuery)),
     );
-  }, [doctorQuery]);
+  }, [doctorOptions, doctorQuery]);
 
   const showDoctorDropdown = doctorQuery.length > 0 && selectedDoctor?.name !== doctorQuery;
 
