@@ -128,6 +128,12 @@ async function getAssignedVisitadorId(value: unknown) {
   return new Types.ObjectId(rawId);
 }
 
+function ensureAssignmentIsAvailable(currentAssignment: Types.ObjectId | null | undefined, nextAssignment: Types.ObjectId | undefined) {
+  if (currentAssignment && nextAssignment && currentAssignment.toString() !== nextAssignment.toString()) {
+    throw new Error('El cliente ya esta asignado a otro visitador. Quita la asignacion actual antes de asignarlo de nuevo.');
+  }
+}
+
 clientRouter.get('/', async (_req, res, next) => {
   try {
     const [doctors, pharmacies, institutions] = await Promise.all([
@@ -238,6 +244,40 @@ clientRouter.post('/pharmacies', requireAuth, requireRoles('admin', 'jefe'), asy
   }
 });
 
+clientRouter.patch('/doctors/:id', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    const doctor = await DoctorModel.findById(req.params.id);
+    if (!doctor || !doctor.active) { res.status(404).json({ message: 'Medico activo no encontrado.' }); return; }
+    const fullName = normalizeText(req.body?.fullName ?? req.body?.name);
+    const address = normalizeText(req.body?.address);
+    const category = normalizeText(req.body?.category).toUpperCase();
+    if (!fullName || !address) { res.status(400).json({ message: 'Nombre y direccion son requeridos.' }); return; }
+    if (category && !doctorCategories.includes(category as (typeof doctorCategories)[number])) { res.status(400).json({ message: 'Categoria de medico invalida.' }); return; }
+    doctor.fullName = fullName; doctor.address = address; doctor.category = (category || doctor.category) as typeof doctor.category;
+    doctor.specialty = normalizeText(req.body?.specialty); doctor.hospitalOrClinic = normalizeText(req.body?.hospitalOrClinic);
+    doctor.clinicPhone = normalizeText(req.body?.clinicPhone); doctor.mobilePhone = normalizeText(req.body?.mobilePhone);
+    doctor.emailOrSocial = normalizeText(req.body?.emailOrSocial); doctor.schedule = { visitDays: Array.isArray(req.body?.visitDays) ? req.body.visitDays.map(normalizeText).filter(Boolean) : [], visitHours: normalizeText(req.body?.visitHours) };
+    await doctor.save(); res.json(serializeDoctor(doctor));
+  } catch (error) { next(error); }
+});
+
+clientRouter.patch('/pharmacies/:id', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    const pharmacy = await PharmacyModel.findById(req.params.id);
+    if (!pharmacy || !pharmacy.active) { res.status(404).json({ message: 'Farmacia activa no encontrada.' }); return; }
+    const name = normalizeText(req.body?.name);
+    const address = normalizeText(req.body?.address);
+    const category = normalizeText(req.body?.category);
+    if (!name || !address) { res.status(400).json({ message: 'Nombre y direccion son requeridos.' }); return; }
+    if (category && !pharmacyCategories.includes(category as (typeof pharmacyCategories)[number])) { res.status(400).json({ message: 'Categoria de farmacia invalida.' }); return; }
+    pharmacy.name = name; pharmacy.address = address; pharmacy.category = (category || pharmacy.category) as typeof pharmacy.category;
+    pharmacy.ownerName = normalizeText(req.body?.ownerName); pharmacy.purchaseManager = normalizeText(req.body?.purchaseManager);
+    pharmacy.phone = normalizeText(req.body?.phone); pharmacy.mobilePhone = normalizeText(req.body?.mobilePhone);
+    pharmacy.emailOrSocial = normalizeText(req.body?.emailOrSocial); pharmacy.schedule = { visitDays: Array.isArray(req.body?.visitDays) ? req.body.visitDays.map(normalizeText).filter(Boolean) : [], visitHours: normalizeText(req.body?.visitHours) };
+    await pharmacy.save(); res.json(serializePharmacy(pharmacy));
+  } catch (error) { next(error); }
+});
+
 clientRouter.delete('/doctors/:id', requireAuth, requireRoles('admin', 'jefe'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const doctor = await DoctorModel.findById(req.params.id);
@@ -267,7 +307,9 @@ clientRouter.patch('/doctors/:id/assignment', requireAuth, requireRoles('admin',
       return;
     }
 
-    doctor.assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    const assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    ensureAssignmentIsAvailable(doctor.assignedUserId, assignedUserId);
+    doctor.assignedUserId = assignedUserId;
     await doctor.save();
 
     res.json(serializeDoctor(doctor));
@@ -337,7 +379,9 @@ clientRouter.patch('/pharmacies/:id/assignment', requireAuth, requireRoles('admi
       return;
     }
 
-    pharmacy.assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    const assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    ensureAssignmentIsAvailable(pharmacy.assignedUserId, assignedUserId);
+    pharmacy.assignedUserId = assignedUserId;
     await pharmacy.save();
 
     res.json(serializePharmacy(pharmacy));

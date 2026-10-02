@@ -2,7 +2,7 @@ import type { Doctor, Institution, Pharmacy, UserProfile } from '@prism/shared';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Building2, Check, CheckCircle2, ChevronDown, CircleUserRound, MapPin, Stethoscope, Trash2, UserCheck, Users } from 'lucide-react-native';
+import { Building2, Check, CheckCircle2, ChevronDown, CircleUserRound, MapPin, Pencil, Stethoscope, Trash2, UserCheck, Users } from 'lucide-react-native';
 import { canAssignClients, canManageClients } from '../app/permissions';
 import { SessionUser } from '../app/types';
 import { api } from '../services/api';
@@ -81,6 +81,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const [tab, setTab] = useState<ClientTab>('doctors');
   const [createType, setCreateType] = useState<CreateType>('doctor');
   const [listFilter, setListFilter] = useState<ListFilter>('active');
+  const [showOnlyFree, setShowOnlyFree] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -93,6 +94,9 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const [pendingDeleteClient, setPendingDeleteClient] = useState<ManagedClient | null>(null);
   const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
   const [createdClient, setCreatedClient] = useState<ManagedClient | null>(null);
+  const [editingClient, setEditingClient] = useState<ManagedClient | null>(null);
+  const [editForm, setEditForm] = useState<ClientFormState>(emptyForm);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [selectedAssignClientId, setSelectedAssignClientId] = useState('');
   const [selectedVisitadorId, setSelectedVisitadorId] = useState('');
   const [assigningClientId, setAssigningClientId] = useState<string | null>(null);
@@ -155,12 +159,12 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const currentRows = useMemo(() => {
     const rows = tab === 'doctors' ? doctors : pharmacies;
     const visibleRows = currentUser.role === 'visitador' ? rows.filter((client) => client.assignedUserId === currentUser.id) : rows;
-    return visibleRows.filter((client) => (listFilter === 'active' ? client.active : !client.active));
-  }, [currentUser.id, currentUser.role, doctors, listFilter, pharmacies, tab]);
+    return visibleRows.filter((client) => (listFilter === 'active' ? client.active : !client.active) && (!showOnlyFree || !client.assignedUserId));
+  }, [currentUser.id, currentUser.role, doctors, listFilter, pharmacies, showOnlyFree, tab]);
   const visibleCurrentRows = useMemo(() => {
     const normalizedSearch = directorySearch.trim().toLocaleLowerCase();
 
-    if (!normalizedSearch) {
+    if (!normalizedSearch && !showOnlyFree) {
       return [];
     }
 
@@ -190,6 +194,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
     [users],
   );
   const selectedVisitador = activeVisitadores.find((visitador) => visitador.id === selectedVisitadorId);
+  const assignmentLocked = Boolean(selectedAssignClient?.assignedUserId && selectedVisitadorId && selectedAssignClient.assignedUserId !== selectedVisitadorId);
   const usersById = useMemo(() => {
     const nextUsersById = new Map<string, UserProfile>();
     users.forEach((user) => nextUsersById.set(user.id, user));
@@ -197,6 +202,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   }, [users]);
   const activeDoctors = doctors.filter((doctor) => doctor.active).length;
   const activePharmacies = pharmacies.filter((pharmacy) => pharmacy.active).length;
+  const freeClientCount = (tab === 'doctors' ? doctors : pharmacies).filter((client) => client.active && !client.assignedUserId).length;
   const activeInstitutions = institutions.filter((institution) => institution.active).length;
   const canDeleteFromTab = canEdit;
 
@@ -218,6 +224,29 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
 
   const updateForm = (field: keyof ClientFormState, value: string) => {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
+  };
+
+  const openEdit = (client: ManagedClient) => {
+    setEditForm(client.type === 'doctor' ? { ...emptyForm, name: client.name, category: client.category as ClientFormState['category'], address: client.address, specialty: client.specialty ?? '', hospitalOrClinic: client.hospitalOrClinic ?? '', clinicPhone: client.clinicPhone ?? '', mobilePhone: client.mobilePhone ?? '', emailOrSocial: client.emailOrSocial ?? '', visitDays: (client.visitDays ?? []).join(', '), visitHours: client.visitHours ?? '' } : { ...emptyForm, name: client.name, category: client.category as ClientFormState['category'], address: client.address, ownerName: client.ownerName ?? '', purchaseManager: client.purchaseManager ?? '', phone: client.phone ?? '', mobilePhone: client.mobilePhone ?? '', emailOrSocial: client.emailOrSocial ?? '', visitDays: (client.visitDays ?? []).join(', '), visitHours: client.visitHours ?? '' });
+    setEditingClient(client);
+  };
+
+  const saveEdit = async () => {
+    if (!editingClient || !editForm.name.trim() || !editForm.address.trim()) return;
+    setSavingEdit(true);
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesion no disponible. Ingresa de nuevo.');
+      if (editingClient.type === 'doctor') {
+        const updated = await api.updateDoctor(token, editingClient.id, { fullName: editForm.name.trim(), category: editForm.category === 'cadena' ? 'C' : editForm.category, address: editForm.address.trim(), specialty: editForm.specialty.trim(), hospitalOrClinic: editForm.hospitalOrClinic.trim(), clinicPhone: editForm.clinicPhone.trim(), mobilePhone: editForm.mobilePhone.trim(), emailOrSocial: editForm.emailOrSocial.trim(), visitDays: getVisitDays(editForm.visitDays), visitHours: editForm.visitHours.trim() });
+        setDoctors((current) => current.map((client) => client.id === updated.id ? updated : client));
+      } else {
+        const updated = await api.updatePharmacy(token, editingClient.id, { name: editForm.name.trim(), category: editForm.category, address: editForm.address.trim(), ownerName: editForm.ownerName.trim(), purchaseManager: editForm.purchaseManager.trim(), phone: editForm.phone.trim(), mobilePhone: editForm.mobilePhone.trim(), emailOrSocial: editForm.emailOrSocial.trim(), visitDays: getVisitDays(editForm.visitDays), visitHours: editForm.visitHours.trim() });
+        setPharmacies((current) => current.map((client) => client.id === updated.id ? updated : client));
+      }
+      setEditingClient(null); setMessageType('success'); setMessage('Cliente actualizado correctamente.');
+    } catch (error) { setMessageType('error'); setMessage(error instanceof Error ? error.message : 'No se pudo actualizar el cliente.'); }
+    finally { setSavingEdit(false); }
   };
 
   const createClient = async () => {
@@ -613,10 +642,11 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
                 </View>
               )}
               <View style={styles.assignmentActions}>
+                {assignmentLocked ? <Text style={styles.assignmentHint}>Este cliente ya tiene visitador. Quita la asignacion actual antes de asignarlo a otra persona.</Text> : null}
                 <Pressable
-                  disabled={!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null}
+                  disabled={!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null || assignmentLocked}
                   onPress={() => void submitAssignment(false)}
-                  style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, (!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null) && styles.buttonDisabled]}
+                  style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, (!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null || assignmentLocked) && styles.buttonDisabled]}
                 >
                   <Text style={styles.primaryButtonText}>{assigningClientId ? 'Asignando...' : 'Asignar visitador'}</Text>
                 </Pressable>
@@ -636,7 +666,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
       <View style={styles.listCard}>
         <View style={styles.listHeader}>
           <View>
-            <Text style={styles.cardTitle}>{tabLabels[tab]} registrados</Text>
+            <Text style={styles.cardTitle}>Clientes registrados</Text>
             <Text style={styles.subhead}>{loading ? 'Cargando datos...' : `${currentRows.length} ${listFilter === 'active' ? 'activos' : 'eliminados'}`}</Text>
           </View>
           {!canEdit && <Text style={styles.readOnlyBadge}>Solo consulta</Text>}
@@ -655,10 +685,14 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
             <Pressable onPress={() => setListFilter('active')} style={[styles.segmentOption, listFilter === 'active' && styles.segmentActive]}>
               <Text style={[styles.segmentText, listFilter === 'active' && styles.segmentTextActive]}>Activos</Text>
             </Pressable>
-            <Pressable onPress={() => setListFilter('deleted')} style={[styles.segmentOption, listFilter === 'deleted' && styles.segmentActive]}>
+            <Pressable onPress={() => { setListFilter('deleted'); setShowOnlyFree(false); }} style={[styles.segmentOption, listFilter === 'deleted' && styles.segmentActive]}>
               <Text style={[styles.segmentText, listFilter === 'deleted' && styles.segmentTextActive]}>Eliminados</Text>
             </Pressable>
           </View>
+
+          {currentUser.role !== 'visitador' && listFilter === 'active' ? <Pressable onPress={() => setShowOnlyFree((current) => !current)} style={[styles.segmentOption, showOnlyFree && styles.segmentActive]}>
+            <Text style={[styles.segmentText, showOnlyFree && styles.segmentTextActive]}>{showOnlyFree ? 'Mostrando libres' : `Solo libres (${freeClientCount})`}</Text>
+          </Pressable> : null}
         </View>
 
         <TextInput
@@ -669,10 +703,10 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
           style={styles.directorySearch}
         />
 
-        {!directorySearch.trim() ? (
+        {!directorySearch.trim() && !showOnlyFree ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Busca un registro</Text>
-            <Text style={styles.emptyText}>Escribe un nombre o direccion para consultar el directorio.</Text>
+            <Text style={styles.emptyText}>Escribe un nombre o dirección, o usa Solo libres para ver clientes disponibles.</Text>
           </View>
         ) : (
           <>
@@ -688,7 +722,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
             {visibleCurrentRows.length === 0 && (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>Sin resultados</Text>
-                <Text style={styles.emptyText}>No encontramos coincidencias para esta busqueda.</Text>
+                <Text style={styles.emptyText}>{showOnlyFree && !directorySearch.trim() ? 'No hay clientes libres en este momento.' : 'No encontramos coincidencias para esta búsqueda.'}</Text>
               </View>
             )}
 
@@ -708,14 +742,17 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
                 <Text style={[styles.tableCell, styles.addressColumn]} numberOfLines={2}>{getClientAddress(client)}</Text>
                 <Text style={styles.tableCell} numberOfLines={2}>{getClientContact(client)}</Text>
                 {canDeleteFromTab && (
-                  <Pressable
-                    disabled={!client.active || deletingClientId === client.id}
-                    onPress={() => setPendingDeleteClient(client)}
-                    style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, (!client.active || deletingClientId === client.id) && styles.deleteButtonDisabled]}
-                  >
-                    <Trash2 size={16} color={client.active ? colors.primaryDark : colors.muted} />
-                    <Text style={[styles.deleteButtonText, !client.active && styles.deleteButtonTextDisabled]}>{deletingClientId === client.id ? 'Eliminando...' : 'Eliminar'}</Text>
-                  </Pressable>
+                  <View style={styles.rowActions}>
+                    <Pressable accessibilityLabel={`Editar ${client.name}`} disabled={!client.active} onPress={() => openEdit(client)} style={({ pressed }) => [styles.editButton, pressed && styles.deleteButtonPressed, !client.active && styles.deleteButtonDisabled]}><Pencil size={16} color={colors.primary} /><Text style={styles.editButtonText}>Editar</Text></Pressable>
+                    <Pressable
+                      disabled={!client.active || deletingClientId === client.id}
+                      onPress={() => setPendingDeleteClient(client)}
+                      style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, (!client.active || deletingClientId === client.id) && styles.deleteButtonDisabled]}
+                    >
+                      <Trash2 size={16} color={client.active ? colors.primaryDark : colors.muted} />
+                      <Text style={[styles.deleteButtonText, !client.active && styles.deleteButtonTextDisabled]}>{deletingClientId === client.id ? 'Eliminando...' : 'Eliminar'}</Text>
+                    </Pressable>
+                  </View>
                 )}
               </View>
             ))}
@@ -741,6 +778,24 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
             <Pressable onPress={() => setCreatedClient(null)} style={({ pressed }) => [styles.primaryButton, styles.modalButton, pressed && styles.primaryButtonPressed]}>
               <Text style={styles.primaryButtonText}>Aceptar</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent visible={editingClient !== null} animationType="fade" onRequestClose={() => !savingEdit && setEditingClient(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.editModalCard]}>
+            <Text style={styles.modalTitle}>Editar {editingClient?.type === 'doctor' ? 'médico' : 'farmacia'}</Text>
+            <ScrollView contentContainerStyle={styles.editForm} showsVerticalScrollIndicator={false}>
+              <Field label={editingClient?.type === 'doctor' ? 'Nombre completo' : 'Nombre farmacia'} value={editForm.name} placeholder="Nombre" onChangeText={(value) => setEditForm((current) => ({ ...current, name: value }))} wide />
+              <CategorySelector type={editingClient?.type === 'doctor' ? 'doctor' : 'pharmacy'} value={editForm.category} onChange={(value) => setEditForm((current) => ({ ...current, category: value }))} />
+              <Field label="Dirección" value={editForm.address} placeholder="Dirección" onChangeText={(value) => setEditForm((current) => ({ ...current, address: value }))} wide />
+              {editingClient?.type === 'doctor' ? <><Field label="Especialidad" value={editForm.specialty} placeholder="Especialidad" onChangeText={(value) => setEditForm((current) => ({ ...current, specialty: value }))} /><Field label="Centro / clínica" value={editForm.hospitalOrClinic} placeholder="Centro de atención" onChangeText={(value) => setEditForm((current) => ({ ...current, hospitalOrClinic: value }))} /><Field label="Teléfono clínica" value={editForm.clinicPhone} placeholder="Teléfono" onChangeText={(value) => setEditForm((current) => ({ ...current, clinicPhone: value }))} /><Field label="Celular" value={editForm.mobilePhone} placeholder="Celular" onChangeText={(value) => setEditForm((current) => ({ ...current, mobilePhone: value }))} /></> : <><Field label="Propietario" value={editForm.ownerName} placeholder="Propietario" onChangeText={(value) => setEditForm((current) => ({ ...current, ownerName: value }))} /><Field label="Encargado de compras" value={editForm.purchaseManager} placeholder="Encargado" onChangeText={(value) => setEditForm((current) => ({ ...current, purchaseManager: value }))} /><Field label="Teléfono" value={editForm.phone} placeholder="Teléfono" onChangeText={(value) => setEditForm((current) => ({ ...current, phone: value }))} /><Field label="Celular" value={editForm.mobilePhone} placeholder="Celular" onChangeText={(value) => setEditForm((current) => ({ ...current, mobilePhone: value }))} /></>}
+              <Field label="Correo / red social" value={editForm.emailOrSocial} placeholder="Opcional" onChangeText={(value) => setEditForm((current) => ({ ...current, emailOrSocial: value }))} />
+              <Field label="Días de visita" value={editForm.visitDays} placeholder="Lunes, miércoles" onChangeText={(value) => setEditForm((current) => ({ ...current, visitDays: value }))} />
+              <Field label="Horario" value={editForm.visitHours} placeholder="Ej. 09:00 - 12:00" onChangeText={(value) => setEditForm((current) => ({ ...current, visitHours: value }))} />
+            </ScrollView>
+            <View style={styles.modalActions}><Pressable disabled={savingEdit} onPress={() => setEditingClient(null)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Cancelar</Text></Pressable><Pressable disabled={savingEdit || !editForm.name.trim() || !editForm.address.trim()} onPress={() => void saveEdit()} style={[styles.primaryButton, styles.modalActionButton, (savingEdit || !editForm.name.trim() || !editForm.address.trim()) && styles.buttonDisabled]}><Text style={styles.primaryButtonText}>{savingEdit ? 'Guardando...' : 'Guardar cambios'}</Text></Pressable></View>
           </View>
         </View>
       </Modal>
@@ -1473,6 +1528,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  rowActions: {
+    width: 190,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  editButton: {
+    minHeight: 38,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  editButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   deleteButton: {
     minHeight: 38,
     borderRadius: radius.md,
@@ -1532,6 +1610,17 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.md,
+  },
+  editModalCard: {
+    maxWidth: 760,
+    maxHeight: '88%',
+    alignItems: 'stretch',
+  },
+  editForm: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    paddingRight: spacing.xs,
   },
   modalIcon: {
     width: 62,

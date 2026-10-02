@@ -4,6 +4,7 @@ const screenPermissions: Record<AppScreen, AppRole[]> = {
   splash: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   login: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   home: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
+  settings: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   'new-visit': ['visitador', 'supervisor', 'jefe', 'admin'],
   'product-selection': ['visitador', 'supervisor', 'jefe', 'admin'],
   'experience-digital': ['visitador', 'supervisor', 'jefe', 'admin'],
@@ -14,6 +15,7 @@ const screenPermissions: Record<AppScreen, AppRole[]> = {
   'visit-comments': ['visitador', 'supervisor', 'jefe', 'admin'],
   dashboard: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   clients: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
+  visitadores: ['supervisor', 'jefe', 'admin'],
   planner: ['visitador', 'supervisor', 'jefe', 'admin'],
   map: ['visitador', 'supervisor', 'jefe', 'admin'],
   visits: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
@@ -30,7 +32,7 @@ export function canAccessScreen(role: AppRole, screen: AppScreen) {
 }
 
 export function canManageUsers(role: AppRole) {
-  return role === 'admin' || role === 'jefe';
+  return role === 'admin' || role === 'jefe' || role === 'supervisor';
 }
 
 export function canManageCatalogs(role: AppRole) {
@@ -42,6 +44,6 @@ export function canManageClients(role: AppRole) {
 }
 
 export function canAssignClients(role: AppRole) {
-  return role === 'admin' || role === 'jefe' || role === 'supervisor';
+  return role === 'admin' || role === 'jefe';
 }
 

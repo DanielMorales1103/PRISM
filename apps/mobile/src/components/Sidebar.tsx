@@ -10,7 +10,9 @@ import {
   PackagePlus,
   PanelLeftClose,
   Settings,
+  UserCog,
   Users,
+  UserRoundCheck,
 } from 'lucide-react-native';
 import { ComponentType } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -32,6 +34,7 @@ const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ siz
   { screen: 'home', label: 'Inicio', icon: Home },
   { screen: 'dashboard', label: 'KPIs Comerciales', icon: BarChart3 },
   { screen: 'clients', label: 'Clientes', icon: Users },
+  { screen: 'visitadores', label: 'Visitadores', icon: UserRoundCheck },
   { screen: 'map', label: 'Mapa Inteligente', icon: Map },
   { screen: 'visits', label: 'Historial CRM', icon: History },
   { screen: 'marketing', label: 'Marketing', icon: Megaphone },
@@ -78,10 +81,16 @@ export function Sidebar({ active, compact, role, onNavigate, onLogout, onCollaps
           );
         })}
       </ScrollView>
-      <Pressable onPress={onLogout} style={[styles.logout, compact && styles.logoutCompact]}>
-        <LogOut size={17} color={colors.muted} />
-        <Text style={styles.logoutText}>Salir</Text>
-      </Pressable>
+      <View style={styles.footerActions}>
+        <Pressable onPress={() => onNavigate('settings')} style={[styles.settingsAction, active === 'settings' && styles.settingsActionActive, compact && styles.logoutCompact]}>
+          <UserCog size={17} color={active === 'settings' ? colors.primary : colors.muted} />
+          <Text style={[styles.logoutText, active === 'settings' && styles.settingsActionTextActive]}>Configuración</Text>
+        </Pressable>
+        <Pressable onPress={onLogout} style={[styles.logout, compact && styles.logoutCompact]}>
+          <LogOut size={17} color={colors.muted} />
+          <Text style={styles.logoutText}>Salir</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -187,6 +196,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
+  },
+  footerActions: {
+    gap: spacing.sm,
+  },
+  settingsAction: {
+    minHeight: 44,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  settingsActionActive: {
+    backgroundColor: colors.primarySoft,
+  },
+  settingsActionTextActive: {
+    color: colors.primary,
   },
   logoutCompact: {
     alignSelf: 'flex-start',

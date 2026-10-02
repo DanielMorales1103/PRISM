@@ -86,6 +86,11 @@ export interface CreateUserPayload {
   role: AppRole;
 }
 
+export interface UpdateMyProfilePayload {
+  email: string;
+  password?: string;
+}
+
 export interface CreateProductPayload {
   name: string;
   line: string;
@@ -161,6 +166,7 @@ export const api = {
       email,
       password,
     }),
+  updateMyProfile: (token: string, payload: UpdateMyProfilePayload) => patchJson<LoginResponse>('/api/users/me', payload, token),
   createUser: (token: string, payload: CreateUserPayload) => postJson<UserProfile>('/api/users', payload, token),
   deactivateUser: (token: string, id: string) => deleteJson<UserProfile>(`/api/users/${id}`, token),
   getUsers: () => getJson<UserProfile[]>('/api/users'),
@@ -172,6 +178,8 @@ export const api = {
   createPharmacy: (token: string, payload: CreatePharmacyPayload) => postJson<Pharmacy>('/api/clients/pharmacies', payload, token),
   deactivateDoctor: (token: string, id: string) => deleteJson<Doctor>(`/api/clients/doctors/${id}`, token),
   deactivatePharmacy: (token: string, id: string) => deleteJson<Pharmacy>(`/api/clients/pharmacies/${id}`, token),
+  updateDoctor: (token: string, id: string, payload: CreateDoctorPayload) => patchJson<Doctor>(`/api/clients/doctors/${id}`, payload, token),
+  updatePharmacy: (token: string, id: string, payload: CreatePharmacyPayload) => patchJson<Pharmacy>(`/api/clients/pharmacies/${id}`, payload, token),
   assignDoctor: (token: string, id: string, assignedUserId?: string) =>
     patchJson<Doctor>(`/api/clients/doctors/${id}/assignment`, { assignedUserId }, token),
   assignPharmacy: (token: string, id: string, assignedUserId?: string) =>

@@ -10,6 +10,8 @@ import { InteractivePresentationScreen } from '../screens/InteractivePresentatio
 import { KpiDashboardScreen } from '../screens/KpiDashboardScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MapScreen } from '../screens/MapScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { VisitadoresScreen } from '../screens/VisitadoresScreen';
 import { MedicalEvidenceScreen } from '../screens/MedicalEvidenceScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
 import { NewVisitScreen } from '../screens/NewVisitScreen';
@@ -24,6 +26,7 @@ import { AppScreen, SessionUser, VisitDoctorSnapshot } from './types';
 import { colors } from '../theme/theme';
 import { api } from '../services/api';
 import { clearSession, loadSession, loadToken } from '../services/session';
+import { saveSession } from '../services/session';
 import { Menu } from 'lucide-react-native';
 
 interface VisitDraft {
@@ -317,6 +320,10 @@ export function AppShell() {
         return <VisitCommentsScreen saving={savingVisit} onBack={() => setScreen('visit-result')} onSave={handleSaveVisit} />;
       case 'clients':
         return <ClientsScreen currentUser={user} />;
+      case 'settings':
+        return <SettingsScreen currentUser={user} onSessionUpdated={(nextUser, token) => { void saveSession({ user: nextUser, token }); setUser(nextUser); }} />;
+      case 'visitadores':
+        return <VisitadoresScreen />;
       case 'map':
         return <MapScreen currentUser={user} />;
       case 'visits':
