@@ -25,6 +25,7 @@ export type AppScreen =
   | 'dashboard';
 
 export interface SessionUser {
+  id: string;
   name: string;
   email: string;
   role: AppRole;

@@ -2,11 +2,12 @@ import type { Doctor } from '@prism/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ArrowLeft, Building2, ChevronRight, Cross, LocateFixed, MapPin, Navigation, User } from 'lucide-react-native';
-import { VisitDoctorSnapshot } from '../app/types';
+import { SessionUser, VisitDoctorSnapshot } from '../app/types';
 import { api } from '../services/api';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface NewVisitScreenProps {
+  currentUser: SessionUser;
   onBack: () => void;
   onContinue: (doctor: VisitDoctorSnapshot) => void;
 }
@@ -56,9 +57,9 @@ function toDoctorOption(doctor: Doctor): DoctorOption {
   };
 }
 
-export function NewVisitScreen({ onBack, onContinue }: NewVisitScreenProps) {
+export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScreenProps) {
   const [doctorQuery, setDoctorQuery] = useState('');
-  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>(fallbackDoctors);
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>(currentUser.role === 'visitador' ? [] : fallbackDoctors);
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorOption | null>(null);
   const { width, height } = useWindowDimensions();
   const wide = width >= 900 && width > height;
@@ -68,22 +69,25 @@ export function NewVisitScreen({ onBack, onContinue }: NewVisitScreenProps) {
 
     void api.getClients()
       .then((clients) => {
-        const activeDoctors = clients.doctors.filter((doctor) => doctor.active).map(toDoctorOption);
+        const activeDoctors = clients.doctors
+          .filter((doctor) => doctor.active)
+          .filter((doctor) => currentUser.role !== 'visitador' || doctor.assignedUserId === currentUser.id)
+          .map(toDoctorOption);
 
-        if (mounted && activeDoctors.length > 0) {
-          setDoctorOptions(activeDoctors);
+        if (mounted) {
+          setDoctorOptions(activeDoctors.length > 0 ? activeDoctors : currentUser.role === 'visitador' ? [] : fallbackDoctors);
         }
       })
       .catch(() => {
         if (mounted) {
-          setDoctorOptions(fallbackDoctors);
+          setDoctorOptions(currentUser.role === 'visitador' ? [] : fallbackDoctors);
         }
       });
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentUser.id, currentUser.role]);
 
   const matchingDoctors = useMemo(() => {
     const normalizedQuery = doctorQuery.trim().toLowerCase();

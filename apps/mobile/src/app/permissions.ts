@@ -41,3 +41,7 @@ export function canManageClients(role: AppRole) {
   return role === 'admin' || role === 'jefe';
 }
 
+export function canAssignClients(role: AppRole) {
+  return role === 'admin' || role === 'jefe' || role === 'supervisor';
+}
+

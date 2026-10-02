@@ -34,9 +34,16 @@ export async function loadSession(): Promise<StoredSession | null> {
   }
 
   try {
+    const user = JSON.parse(userJson) as SessionUser;
+
+    if (!user.id) {
+      await clearSession();
+      return null;
+    }
+
     return {
       token,
-      user: JSON.parse(userJson) as SessionUser,
+      user,
     };
   } catch {
     await clearSession();

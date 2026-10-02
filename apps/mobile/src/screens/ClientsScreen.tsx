@@ -1,9 +1,9 @@
-import type { Doctor, Institution, Pharmacy } from '@prism/shared';
+import type { Doctor, Institution, Pharmacy, UserProfile } from '@prism/shared';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Building2, CheckCircle2, CircleUserRound, MapPin, Stethoscope, Trash2, Users } from 'lucide-react-native';
-import { canManageClients } from '../app/permissions';
+import { Building2, Check, CheckCircle2, ChevronDown, CircleUserRound, MapPin, Stethoscope, Trash2, UserCheck, Users } from 'lucide-react-native';
+import { canAssignClients, canManageClients } from '../app/permissions';
 import { SessionUser } from '../app/types';
 import { api } from '../services/api';
 import { loadToken } from '../services/session';
@@ -77,12 +77,14 @@ const typeLabels: Record<CreateType, string> = {
 
 export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const canEdit = canManageClients(currentUser.role);
+  const canAssign = canAssignClients(currentUser.role);
   const [tab, setTab] = useState<ClientTab>('doctors');
   const [createType, setCreateType] = useState<CreateType>('doctor');
   const [listFilter, setListFilter] = useState<ListFilter>('active');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
@@ -91,13 +93,35 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const [pendingDeleteClient, setPendingDeleteClient] = useState<ManagedClient | null>(null);
   const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
   const [createdClient, setCreatedClient] = useState<ManagedClient | null>(null);
+  const [selectedAssignClientId, setSelectedAssignClientId] = useState('');
+  const [selectedVisitadorId, setSelectedVisitadorId] = useState('');
+  const [assigningClientId, setAssigningClientId] = useState<string | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [assignmentMessageType, setAssignmentMessageType] = useState<'success' | 'error'>('success');
+  const [directorySearch, setDirectorySearch] = useState('');
+  const [visitadorMenuOpen, setVisitadorMenuOpen] = useState(false);
+  const [clientResultsOpen, setClientResultsOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || (!visitadorMenuOpen && !clientResultsOpen)) return;
+    const closeMenus = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest('#clients-assignment-popover, #clients-visitador-popover')) {
+        setVisitadorMenuOpen(false);
+        setClientResultsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', closeMenus);
+    return () => document.removeEventListener('mousedown', closeMenus);
+  }, [visitadorMenuOpen, clientResultsOpen]);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadClients() {
       try {
-        const clients = await api.getClients();
+        const [clients, loadedUsers] = await Promise.all([api.getClients(), api.getUsers()]);
 
         if (!mounted) {
           return;
@@ -106,6 +130,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
         setDoctors(clients.doctors);
         setPharmacies(clients.pharmacies);
         setInstitutions(clients.institutions);
+        setUsers(loadedUsers);
       } catch {
         if (!mounted) {
           return;
@@ -129,13 +154,67 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
 
   const currentRows = useMemo(() => {
     const rows = tab === 'doctors' ? doctors : pharmacies;
-    return rows.filter((client) => (listFilter === 'active' ? client.active : !client.active));
-  }, [doctors, listFilter, pharmacies, tab]);
+    const visibleRows = currentUser.role === 'visitador' ? rows.filter((client) => client.assignedUserId === currentUser.id) : rows;
+    return visibleRows.filter((client) => (listFilter === 'active' ? client.active : !client.active));
+  }, [currentUser.id, currentUser.role, doctors, listFilter, pharmacies, tab]);
+  const visibleCurrentRows = useMemo(() => {
+    const normalizedSearch = directorySearch.trim().toLocaleLowerCase();
 
+    if (!normalizedSearch) {
+      return [];
+    }
+
+    return currentRows
+      .filter((client) => `${client.name} ${client.address}`.toLocaleLowerCase().includes(normalizedSearch))
+      .slice(0, 20);
+  }, [currentRows, directorySearch]);
+
+  const assignableClients = useMemo(() => {
+    const rows = tab === 'doctors' ? doctors : pharmacies;
+    return rows.filter((client) => client.active);
+  }, [doctors, pharmacies, tab]);
+  const visibleAssignableClients = useMemo(() => {
+    const normalizedSearch = assignmentSearch.trim().toLocaleLowerCase();
+
+    if (!normalizedSearch) {
+      return [];
+    }
+
+    return assignableClients
+      .filter((client) => !normalizedSearch || `${client.name} ${client.address}`.toLocaleLowerCase().includes(normalizedSearch))
+      .slice(0, 12);
+  }, [assignableClients, assignmentSearch]);
+  const selectedAssignClient = assignableClients.find((client) => client.id === selectedAssignClientId);
+  const activeVisitadores = useMemo(
+    () => users.filter((user) => user.active && user.role === 'visitador').sort((first, second) => first.name.localeCompare(second.name)),
+    [users],
+  );
+  const selectedVisitador = activeVisitadores.find((visitador) => visitador.id === selectedVisitadorId);
+  const usersById = useMemo(() => {
+    const nextUsersById = new Map<string, UserProfile>();
+    users.forEach((user) => nextUsersById.set(user.id, user));
+    return nextUsersById;
+  }, [users]);
   const activeDoctors = doctors.filter((doctor) => doctor.active).length;
   const activePharmacies = pharmacies.filter((pharmacy) => pharmacy.active).length;
   const activeInstitutions = institutions.filter((institution) => institution.active).length;
   const canDeleteFromTab = canEdit;
+
+  useEffect(() => {
+    setSelectedAssignClientId('');
+    setSelectedVisitadorId('');
+    setAssignmentSearch('');
+    setAssignmentMessage('');
+    setDirectorySearch('');
+    setVisitadorMenuOpen(false);
+    setClientResultsOpen(false);
+  }, [tab]);
+
+  useEffect(() => {
+    if (selectedAssignClient) {
+      setSelectedVisitadorId(selectedAssignClient.assignedUserId ?? '');
+    }
+  }, [selectedAssignClient]);
 
   const updateForm = (field: keyof ClientFormState, value: string) => {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
@@ -255,6 +334,63 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
     }
   };
 
+  const submitAssignment = async (clearAssignment = false) => {
+    if (!selectedAssignClient) {
+      setAssignmentMessageType('error');
+      setAssignmentMessage('Selecciona un cliente para asignar.');
+      return;
+    }
+
+    if (!clearAssignment && !selectedVisitadorId) {
+      setAssignmentMessageType('error');
+      setAssignmentMessage('Selecciona un visitador activo.');
+      return;
+    }
+
+    setAssigningClientId(selectedAssignClient.id);
+    setAssignmentMessage('');
+
+    try {
+      const token = await loadToken();
+
+      if (!token) {
+        setAssignmentMessageType('error');
+        setAssignmentMessage('Sesion no disponible. Ingresa de nuevo.');
+        return;
+      }
+
+      if (selectedAssignClient.type === 'doctor') {
+        const updatedDoctor = await api.assignDoctor(token, selectedAssignClient.id, clearAssignment ? undefined : selectedVisitadorId);
+        setDoctors((currentDoctors) => currentDoctors.map((doctor) => (doctor.id === updatedDoctor.id ? updatedDoctor : doctor)));
+      } else {
+        const updatedPharmacy = await api.assignPharmacy(token, selectedAssignClient.id, clearAssignment ? undefined : selectedVisitadorId);
+        setPharmacies((currentPharmacies) => currentPharmacies.map((pharmacy) => (pharmacy.id === updatedPharmacy.id ? updatedPharmacy : pharmacy)));
+      }
+
+      const selectedVisitador = activeVisitadores.find((visitador) => visitador.id === selectedVisitadorId);
+      setAssignmentMessageType('success');
+      setAssignmentMessage(clearAssignment
+        ? `${selectedAssignClient.name} quedo sin asignacion.`
+        : `${selectedAssignClient.name} fue asignado a ${selectedVisitador?.name ?? 'el visitador seleccionado'}.`);
+      setSelectedAssignClientId('');
+      setSelectedVisitadorId('');
+      setAssignmentSearch('');
+      setClientResultsOpen(false);
+    } catch (error) {
+      setAssignmentMessageType('error');
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo actualizar la asignacion.';
+      if (errorMessage === 'Invalid token') {
+        setAssignmentMessage('Sesion vencida. Cierra sesion e ingresa de nuevo.');
+      } else if (errorMessage === 'Failed to fetch' || errorMessage === 'Network request failed') {
+        setAssignmentMessage('No se pudo conectar al API. Confirma que el API este corriendo y vuelve a intentar.');
+      } else {
+        setAssignmentMessage(errorMessage);
+      }
+    } finally {
+      setAssigningClientId(null);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}>
@@ -342,6 +478,161 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
         </View>
       )}
 
+      {canAssign && (
+        <View style={styles.assignmentCard}>
+          <View style={styles.listHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Asignar cartera</Text>
+              <Text style={styles.subhead}>Busca un cliente, selecciona al visitador y guarda la asignacion.</Text>
+            </View>
+            <View style={styles.assignmentBadge}>
+              <UserCheck size={17} color={colors.primary} />
+              <Text style={styles.assignmentBadgeText}>
+                {assignableClients.filter((client) => client.assignedUserId).length} asignados
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.controlsRow}>
+            <View style={styles.segment}>
+              {(['doctors', 'pharmacies'] as ClientTab[]).map((nextTab) => (
+                <Pressable key={nextTab} onPress={() => setTab(nextTab)} style={[styles.segmentOption, tab === nextTab && styles.segmentActive]}>
+                  <Text style={[styles.segmentText, tab === nextTab && styles.segmentTextActive]}>{tabLabels[nextTab]}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+          </View>
+
+          {assignmentMessage ? (
+            <Text style={[styles.assignmentMessage, assignmentMessageType === 'error' && styles.assignmentMessageError]}>{assignmentMessage}</Text>
+          ) : null}
+
+          <View style={styles.assignmentGrid}>
+            <View nativeID="clients-assignment-popover" style={styles.assignmentColumn}>
+              <Text style={styles.label}>{tabLabels[tab]}</Text>
+              <TextInput
+                value={assignmentSearch}
+                onFocus={() => setClientResultsOpen(true)}
+                onChangeText={(value) => {
+                  setAssignmentSearch(value);
+                  setClientResultsOpen(true);
+                  setSelectedAssignClientId('');
+                  setAssignmentMessage('');
+                }}
+                placeholder={`Buscar ${typeLabels[tab === 'doctors' ? 'doctor' : 'pharmacy'].toLowerCase()} por nombre o direccion`}
+                placeholderTextColor="#9CA3AF"
+                style={styles.assignmentSearch}
+              />
+              {selectedAssignClient && !clientResultsOpen ? (
+                <View style={styles.selectedClientSummary}>
+                  <CheckCircle2 size={20} color={colors.primary} />
+                  <View style={styles.selectedClientTextWrap}>
+                    <Text style={styles.selectedClientTitle}>{selectedAssignClient.name}</Text>
+                    <Text style={styles.selectedClientMeta}>{getAssignedName(selectedAssignClient.assignedUserId, usersById)}</Text>
+                  </View>
+                  <Pressable onPress={() => setClientResultsOpen(true)} style={styles.changeClientButton}>
+                    <Text style={styles.changeClientButtonText}>Cambiar</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.selectionList}>
+                  {assignableClients.length === 0 ? (
+                    <Text style={styles.emptyInlineText}>No hay clientes activos para asignar.</Text>
+                  ) : !assignmentSearch.trim() ? (
+                    <Text style={styles.emptyInlineText}>Escribe un nombre o direccion para buscar un cliente.</Text>
+                  ) : visibleAssignableClients.length === 0 ? (
+                    <Text style={styles.emptyInlineText}>No hay resultados para esta busqueda.</Text>
+                  ) : (
+                    visibleAssignableClients.map((client) => (
+                      <Pressable
+                        key={client.id}
+                        onPress={() => {
+                          setSelectedAssignClientId(client.id);
+                          setAssignmentSearch(client.name);
+                          setAssignmentMessage('');
+                          setClientResultsOpen(false);
+                        }}
+                        style={[styles.selectionButton, selectedAssignClientId === client.id && styles.selectionButtonActive]}
+                      >
+                        <Text style={[styles.selectionTitle, selectedAssignClientId === client.id && styles.selectionTitleActive]} numberOfLines={1}>
+                          {client.name}
+                        </Text>
+                        <Text style={styles.selectionMeta} numberOfLines={1}>
+                          {getAssignedName(client.assignedUserId, usersById)}
+                        </Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              )}
+              {clientResultsOpen && visibleAssignableClients.length === 12 && (
+                <Text style={styles.assignmentHint}>Mostrando 12 resultados. Sigue escribiendo para acotar la busqueda.</Text>
+              )}
+            </View>
+
+            <View nativeID="clients-assignment-popover" style={styles.assignmentColumn}>
+              <Text style={styles.label}>Visitador</Text>
+              {activeVisitadores.length === 0 ? (
+                <View style={styles.selectionList}>
+                  <Text style={styles.emptyInlineText}>Crea un usuario visitador activo para asignar clientes.</Text>
+                </View>
+              ) : (
+                <View nativeID="clients-visitador-popover" style={styles.dropdownWrap}>
+                  <Pressable
+                    onPress={() => setVisitadorMenuOpen((isOpen) => !isOpen)}
+                    style={({ pressed }) => [styles.dropdownControl, pressed && styles.secondaryButtonPressed, visitadorMenuOpen && styles.dropdownControlOpen]}
+                  >
+                    <View style={styles.dropdownTextWrap}>
+                      <Text style={[styles.dropdownTitle, !selectedVisitador && styles.dropdownPlaceholder]}>{selectedVisitador?.name ?? 'Selecciona un visitador'}</Text>
+                      <Text style={styles.dropdownMeta}>{selectedVisitador?.email ?? `${activeVisitadores.length} visitadores disponibles`}</Text>
+                    </View>
+                    <ChevronDown size={20} color={colors.muted} />
+                  </Pressable>
+
+                  {visitadorMenuOpen && (
+                    <ScrollView style={styles.dropdownMenu} nestedScrollEnabled>
+                      {activeVisitadores.map((visitador) => (
+                        <Pressable
+                          key={visitador.id}
+                          onPress={() => {
+                            setSelectedVisitadorId(visitador.id);
+                            setVisitadorMenuOpen(false);
+                          }}
+                          style={({ pressed }) => [styles.dropdownOption, pressed && styles.secondaryButtonPressed, selectedVisitadorId === visitador.id && styles.dropdownOptionActive]}
+                        >
+                          <View style={styles.dropdownTextWrap}>
+                            <Text style={styles.dropdownTitle}>{visitador.name}</Text>
+                            <Text style={styles.dropdownMeta}>{visitador.email}</Text>
+                          </View>
+                          {selectedVisitadorId === visitador.id && <Check size={18} color={colors.primary} />}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
+              <View style={styles.assignmentActions}>
+                <Pressable
+                  disabled={!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null}
+                  onPress={() => void submitAssignment(false)}
+                  style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed, (!selectedAssignClient || !selectedVisitadorId || assigningClientId !== null) && styles.buttonDisabled]}
+                >
+                  <Text style={styles.primaryButtonText}>{assigningClientId ? 'Asignando...' : 'Asignar visitador'}</Text>
+                </Pressable>
+                <Pressable
+                  disabled={!selectedAssignClient?.assignedUserId || assigningClientId !== null}
+                  onPress={() => void submitAssignment(true)}
+                  style={({ pressed }) => [styles.secondaryButtonCompact, pressed && styles.secondaryButtonPressed, (!selectedAssignClient?.assignedUserId || assigningClientId !== null) && styles.buttonDisabled]}
+                >
+                  <Text style={styles.secondaryButtonText}>Quitar asignacion</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
       <View style={styles.listCard}>
         <View style={styles.listHeader}>
           <View>
@@ -370,47 +661,66 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
           </View>
         </View>
 
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeadText, styles.nameColumn]}>Nombre</Text>
-          <Text style={styles.tableHeadText}>Categoria</Text>
-          <Text style={[styles.tableHeadText, styles.addressColumn]}>Direccion / centro</Text>
-          <Text style={styles.tableHeadText}>Contacto</Text>
-          {canDeleteFromTab && <Text style={styles.tableHeadText}>Accion</Text>}
-        </View>
+        <TextInput
+          value={directorySearch}
+          onChangeText={setDirectorySearch}
+          placeholder={`Buscar ${tabLabels[tab].toLowerCase()} por nombre o direccion`}
+          placeholderTextColor="#9CA3AF"
+          style={styles.directorySearch}
+        />
 
-        {currentRows.length === 0 && (
+        {!directorySearch.trim() ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Sin {tabLabels[tab].toLowerCase()} {listFilter === 'active' ? 'activos' : 'eliminados'}</Text>
-            <Text style={styles.emptyText}>Cuando existan registros apareceran aqui.</Text>
+            <Text style={styles.emptyTitle}>Busca un registro</Text>
+            <Text style={styles.emptyText}>Escribe un nombre o direccion para consultar el directorio.</Text>
           </View>
-        )}
-
-        {currentRows.map((client) => (
-          <View key={client.id} style={[styles.clientRow, !client.active && styles.clientRowInactive]}>
-            <View style={[styles.nameColumn, styles.clientMain]}>
-              <View style={styles.rowIcon}>
-                <CircleUserRound size={17} color={client.active ? colors.primary : colors.muted} />
-              </View>
-              <View style={styles.nameTextWrap}>
-                <Text style={styles.clientName}>{client.name}</Text>
-                <Text style={styles.clientMeta}>{getClientSubtitle(client)}</Text>
-              </View>
+        ) : (
+          <>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableHeadText, styles.nameColumn]}>Nombre</Text>
+              <Text style={styles.tableHeadText}>Categoria</Text>
+              <Text style={styles.tableHeadText}>Visitador</Text>
+              <Text style={[styles.tableHeadText, styles.addressColumn]}>Direccion / centro</Text>
+              <Text style={styles.tableHeadText}>Contacto</Text>
+              {canDeleteFromTab && <Text style={styles.tableHeadText}>Accion</Text>}
             </View>
-            <Text style={styles.tableCell}>{client.category}</Text>
-            <Text style={[styles.tableCell, styles.addressColumn]} numberOfLines={2}>{getClientAddress(client)}</Text>
-            <Text style={styles.tableCell} numberOfLines={2}>{getClientContact(client)}</Text>
-            {canDeleteFromTab && (
-              <Pressable
-                disabled={!client.active || deletingClientId === client.id}
-                onPress={() => setPendingDeleteClient(client)}
-                style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, (!client.active || deletingClientId === client.id) && styles.deleteButtonDisabled]}
-              >
-                <Trash2 size={16} color={client.active ? colors.primaryDark : colors.muted} />
-                <Text style={[styles.deleteButtonText, !client.active && styles.deleteButtonTextDisabled]}>{deletingClientId === client.id ? 'Eliminando...' : 'Eliminar'}</Text>
-              </Pressable>
+
+            {visibleCurrentRows.length === 0 && (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyTitle}>Sin resultados</Text>
+                <Text style={styles.emptyText}>No encontramos coincidencias para esta busqueda.</Text>
+              </View>
             )}
-          </View>
-        ))}
+
+            {visibleCurrentRows.map((client) => (
+              <View key={client.id} style={[styles.clientRow, !client.active && styles.clientRowInactive]}>
+                <View style={[styles.nameColumn, styles.clientMain]}>
+                  <View style={styles.rowIcon}>
+                    <CircleUserRound size={17} color={client.active ? colors.primary : colors.muted} />
+                  </View>
+                  <View style={styles.nameTextWrap}>
+                    <Text style={styles.clientName}>{client.name}</Text>
+                    <Text style={styles.clientMeta}>{getClientSubtitle(client)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.tableCell}>{client.category}</Text>
+                <Text style={styles.tableCell} numberOfLines={2}>{getAssignedName(client.assignedUserId, usersById)}</Text>
+                <Text style={[styles.tableCell, styles.addressColumn]} numberOfLines={2}>{getClientAddress(client)}</Text>
+                <Text style={styles.tableCell} numberOfLines={2}>{getClientContact(client)}</Text>
+                {canDeleteFromTab && (
+                  <Pressable
+                    disabled={!client.active || deletingClientId === client.id}
+                    onPress={() => setPendingDeleteClient(client)}
+                    style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, (!client.active || deletingClientId === client.id) && styles.deleteButtonDisabled]}
+                  >
+                    <Trash2 size={16} color={client.active ? colors.primaryDark : colors.muted} />
+                    <Text style={[styles.deleteButtonText, !client.active && styles.deleteButtonTextDisabled]}>{deletingClientId === client.id ? 'Eliminando...' : 'Eliminar'}</Text>
+                  </Pressable>
+                )}
+              </View>
+            ))}
+          </>
+        )}
       </View>
 
       <Modal transparent visible={createdClient !== null} animationType="fade" onRequestClose={() => setCreatedClient(null)}>
@@ -617,6 +927,14 @@ function getClientContact(client: ClientRow) {
   return client.phone || client.emailOrSocial || 'Sin contacto';
 }
 
+function getAssignedName(assignedUserId: string | undefined, usersById: Map<string, UserProfile>) {
+  if (!assignedUserId) {
+    return 'Sin asignar';
+  }
+
+  return usersById.get(assignedUserId)?.name ?? 'Visitador no disponible';
+}
+
 const styles = StyleSheet.create({
   content: {
     padding: spacing.xl,
@@ -696,6 +1014,217 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.lg,
     gap: spacing.md,
+  },
+  assignmentCard: {
+    position: 'relative',
+    zIndex: 50,
+    elevation: 50,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  assignmentBadge: {
+    minHeight: 38,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  assignmentBadgeText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  assignmentGrid: {
+    zIndex: 20,
+    elevation: 20,
+    flexDirection: 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  assignmentColumn: {
+    flex: 1,
+    minWidth: 320,
+    gap: spacing.sm,
+  },
+  assignmentSearch: {
+    minHeight: 48,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    paddingHorizontal: spacing.md,
+    fontSize: 14,
+  },
+  selectionList: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    padding: spacing.sm,
+    gap: spacing.sm,
+  },
+  selectionButton: {
+    minHeight: 58,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  selectionButtonActive: {
+    borderColor: '#FFD4C4',
+    backgroundColor: colors.primarySoft,
+  },
+  selectedClientSummary: {
+    minHeight: 72,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: '#FFD4C4',
+    backgroundColor: colors.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  selectedClientTextWrap: {
+    flex: 1,
+  },
+  selectedClientTitle: {
+    color: colors.primaryDark,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  selectedClientMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  changeClientButton: {
+    minHeight: 34,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#FFD4C4',
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  changeClientButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  selectionTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  selectionTitleActive: {
+    color: colors.primaryDark,
+  },
+  selectionMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  emptyInlineText: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    padding: spacing.md,
+  },
+  assignmentHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  assignmentMessage: {
+    color: colors.success,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  assignmentMessageError: {
+    color: colors.primaryDark,
+  },
+  assignmentActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  dropdownWrap: {
+    position: 'relative',
+    zIndex: 20,
+    elevation: 20,
+    gap: spacing.sm,
+  },
+  dropdownControl: {
+    minHeight: 68,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownControlOpen: {
+    borderColor: '#FFD4C4',
+    backgroundColor: colors.primarySoft,
+  },
+  dropdownTextWrap: {
+    flex: 1,
+  },
+  dropdownTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  dropdownPlaceholder: {
+    color: colors.muted,
+  },
+  dropdownMeta: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 76,
+    left: 0,
+    right: 0,
+    zIndex: 30,
+    elevation: 30,
+    maxHeight: 240,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  dropdownOption: {
+    minHeight: 64,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  dropdownOptionActive: {
+    backgroundColor: colors.primarySoft,
   },
   createHeader: {
     flexDirection: 'row',
@@ -782,6 +1311,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     fontSize: 15,
   },
+  directorySearch: {
+    minHeight: 50,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    paddingHorizontal: spacing.md,
+    fontSize: 15,
+  },
   categoryGroup: {
     width: 190,
   },
@@ -842,6 +1380,8 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   listCard: {
+    position: 'relative',
+    zIndex: 1,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1052,6 +1592,15 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
+    minHeight: 50,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  secondaryButtonCompact: {
     minHeight: 50,
     borderRadius: radius.lg,
     borderWidth: 1,

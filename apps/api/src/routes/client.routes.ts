@@ -5,6 +5,7 @@ import { AuthenticatedRequest, requireAuth, requireRoles } from '../middleware/a
 import { DoctorModel } from '../models/doctor.model.js';
 import { InstitutionModel } from '../models/institution.model.js';
 import { PharmacyModel } from '../models/pharmacy.model.js';
+import { UserModel } from '../models/user.model.js';
 
 export const clientRouter = Router();
 
@@ -21,6 +22,22 @@ function normalizeDate(value: unknown) {
 
   const date = new Date(text);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function getLocation(value: unknown) {
+  const candidate = value as { latitude?: unknown; longitude?: unknown } | undefined;
+  const latitude = Number(candidate?.latitude);
+  const longitude = Number(candidate?.longitude);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    throw new Error('Ubicacion invalida.');
+  }
+
+  return { latitude, longitude };
+}
+
+function canUpdateLocation(req: AuthenticatedRequest, assignedUserId?: { toString(): string } | null) {
+  return req.auth?.role !== 'visitador' || assignedUserId?.toString() === req.auth.sub;
 }
 
 function serializeDoctor(doctor: any) {
@@ -89,6 +106,26 @@ function serializeInstitution(institution: any) {
     active: institution.active,
     deletedAt: institution.deletedAt,
   };
+}
+
+async function getAssignedVisitadorId(value: unknown) {
+  const rawId = normalizeText(value);
+
+  if (!rawId) {
+    return undefined;
+  }
+
+  if (!Types.ObjectId.isValid(rawId)) {
+    throw new Error('Visitador invalido.');
+  }
+
+  const user = await UserModel.findOne({ _id: rawId, role: 'visitador', active: true }).lean();
+
+  if (!user) {
+    throw new Error('Visitador no encontrado o inactivo.');
+  }
+
+  return new Types.ObjectId(rawId);
 }
 
 clientRouter.get('/', async (_req, res, next) => {
@@ -221,6 +258,56 @@ clientRouter.delete('/doctors/:id', requireAuth, requireRoles('admin', 'jefe'), 
   }
 });
 
+clientRouter.patch('/doctors/:id/assignment', requireAuth, requireRoles('admin', 'jefe', 'supervisor'), async (req, res, next) => {
+  try {
+    const doctor = await DoctorModel.findById(req.params.id);
+
+    if (!doctor || !doctor.active) {
+      res.status(404).json({ message: 'Medico activo no encontrado.' });
+      return;
+    }
+
+    doctor.assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    await doctor.save();
+
+    res.json(serializeDoctor(doctor));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Visitador')) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    next(error);
+  }
+});
+
+clientRouter.patch('/doctors/:id/location', requireAuth, requireRoles('visitador', 'supervisor', 'jefe', 'admin'), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const doctor = await DoctorModel.findById(req.params.id);
+
+    if (!doctor || !doctor.active) {
+      res.status(404).json({ message: 'Medico activo no encontrado.' });
+      return;
+    }
+
+    if (!canUpdateLocation(req, doctor.assignedUserId)) {
+      res.status(403).json({ message: 'Solo puedes registrar ubicaciones de tu cartera.' });
+      return;
+    }
+
+    doctor.location = getLocation(req.body);
+    await doctor.save();
+    res.json(serializeDoctor(doctor));
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Ubicacion invalida.') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    next(error);
+  }
+});
+
 clientRouter.delete('/pharmacies/:id', requireAuth, requireRoles('admin', 'jefe'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const pharmacy = await PharmacyModel.findById(req.params.id);
@@ -237,6 +324,56 @@ clientRouter.delete('/pharmacies/:id', requireAuth, requireRoles('admin', 'jefe'
 
     res.json(serializePharmacy(pharmacy));
   } catch (error) {
+    next(error);
+  }
+});
+
+clientRouter.patch('/pharmacies/:id/assignment', requireAuth, requireRoles('admin', 'jefe', 'supervisor'), async (req, res, next) => {
+  try {
+    const pharmacy = await PharmacyModel.findById(req.params.id);
+
+    if (!pharmacy || !pharmacy.active) {
+      res.status(404).json({ message: 'Farmacia activa no encontrada.' });
+      return;
+    }
+
+    pharmacy.assignedUserId = await getAssignedVisitadorId(req.body?.assignedUserId);
+    await pharmacy.save();
+
+    res.json(serializePharmacy(pharmacy));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Visitador')) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    next(error);
+  }
+});
+
+clientRouter.patch('/pharmacies/:id/location', requireAuth, requireRoles('visitador', 'supervisor', 'jefe', 'admin'), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const pharmacy = await PharmacyModel.findById(req.params.id);
+
+    if (!pharmacy || !pharmacy.active) {
+      res.status(404).json({ message: 'Farmacia activa no encontrada.' });
+      return;
+    }
+
+    if (!canUpdateLocation(req, pharmacy.assignedUserId)) {
+      res.status(403).json({ message: 'Solo puedes registrar ubicaciones de tu cartera.' });
+      return;
+    }
+
+    pharmacy.location = getLocation(req.body);
+    await pharmacy.save();
+    res.json(serializePharmacy(pharmacy));
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Ubicacion invalida.') {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
     next(error);
   }
 });

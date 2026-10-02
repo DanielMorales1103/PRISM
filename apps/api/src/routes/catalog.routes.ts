@@ -15,7 +15,7 @@ catalogRouter.get('/', async (_req, res, next) => {
   try {
     const [specialties, cycles] = await Promise.all([
       SpecialtyModel.find().sort({ name: 1 }).lean(),
-      CycleModel.find().sort({ number: 1 }).lean(),
+      CycleModel.find({ number: { $lte: 5 } }).sort({ number: 1 }).lean(),
     ]);
 
     res.json({

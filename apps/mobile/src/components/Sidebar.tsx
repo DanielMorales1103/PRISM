@@ -8,6 +8,7 @@ import {
   Map,
   Megaphone,
   PackagePlus,
+  PanelLeftClose,
   Settings,
   Users,
 } from 'lucide-react-native';
@@ -24,6 +25,7 @@ interface SidebarProps {
   role: AppRole;
   onNavigate: (screen: AppScreen) => void;
   onLogout: () => void;
+  onCollapse?: () => void;
 }
 
 const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ size: number; color: string }> }> = [
@@ -39,15 +41,22 @@ const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ siz
   { screen: 'admin-products', label: 'Productos', icon: PackagePlus },
 ];
 
-export function Sidebar({ active, compact, role, onNavigate, onLogout }: SidebarProps) {
+export function Sidebar({ active, compact, role, onNavigate, onLogout, onCollapse }: SidebarProps) {
   const visibleItems = items.filter((item) => canAccessScreen(role, item.screen));
 
   return (
     <View style={[styles.sidebar, compact && styles.compact]}>
-      <View style={styles.logoBlock}>
-        <Text style={styles.logo}>PRISM</Text>
-        {!compact && <Text style={styles.tagline}>MedConnect</Text>}
-        {!compact && <Text style={styles.roleLabel}>{getRoleLabel(role)}</Text>}
+      <View style={styles.brandRow}>
+        <View style={styles.logoBlock}>
+          <Text style={styles.logo}>PRISM</Text>
+          {!compact && <Text style={styles.tagline}>MedConnect</Text>}
+          {!compact && <Text style={styles.roleLabel}>{getRoleLabel(role)}</Text>}
+        </View>
+        {onCollapse ? (
+          <Pressable accessibilityLabel="Contraer menu" onPress={onCollapse} style={styles.collapseButton}>
+            <PanelLeftClose size={20} color={colors.text} />
+          </Pressable>
+        ) : null}
       </View>
       <ScrollView
         contentContainerStyle={[styles.nav, compact && styles.navCompact]}
@@ -98,6 +107,18 @@ const styles = StyleSheet.create({
   },
   logoBlock: {
     gap: 2,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  collapseButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
   },
   logo: {
     color: colors.text,

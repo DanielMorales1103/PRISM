@@ -9,6 +9,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { InteractivePresentationScreen } from '../screens/InteractivePresentationScreen';
 import { KpiDashboardScreen } from '../screens/KpiDashboardScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { MapScreen } from '../screens/MapScreen';
 import { MedicalEvidenceScreen } from '../screens/MedicalEvidenceScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
 import { NewVisitScreen } from '../screens/NewVisitScreen';
@@ -23,6 +24,7 @@ import { AppScreen, SessionUser, VisitDoctorSnapshot } from './types';
 import { colors } from '../theme/theme';
 import { api } from '../services/api';
 import { clearSession, loadSession, loadToken } from '../services/session';
+import { Menu } from 'lucide-react-native';
 
 interface VisitDraft {
   doctor?: VisitDoctorSnapshot;
@@ -41,19 +43,6 @@ interface PresentedFlowDraft {
   completedAt?: string;
 }
 
-const fullScreenFlow: AppScreen[] = [
-  'new-visit',
-  'product-selection',
-  'experience-digital',
-  'interactive-presentation',
-  'storytelling-presentation',
-  'medical-evidence',
-  'visit-result',
-  'visit-comments',
-  'dashboard',
-  'planner',
-];
-
 export function AppShell() {
   const [screen, setScreen] = useState<AppScreen>('splash');
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -61,8 +50,15 @@ export function AppShell() {
   const [visitDraft, setVisitDraft] = useState<VisitDraft>({});
   const [savingVisit, setSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
+
+  useEffect(() => {
+    if (compactNav) {
+      setSidebarOpen(false);
+    }
+  }, [compactNav]);
 
   const handleSplashDone = useCallback(() => {
     setCheckingSession(true);
@@ -207,10 +203,11 @@ export function AppShell() {
       case 'dashboard':
         return <KpiDashboardScreen onBack={() => setScreen('home')} />;
       case 'planner':
-        return <AgendaScreen onBack={() => setScreen('home')} />;
+        return <AgendaScreen currentUser={user} onBack={() => setScreen('home')} />;
       case 'new-visit':
         return (
           <NewVisitScreen
+            currentUser={user}
             onBack={() => setScreen('home')}
             onContinue={(doctor) => {
               setVisitDraft((current) => ({ ...current, doctor }));
@@ -321,6 +318,7 @@ export function AppShell() {
       case 'clients':
         return <ClientsScreen currentUser={user} />;
       case 'map':
+        return <MapScreen currentUser={user} />;
       case 'visits':
       case 'marketing':
       case 'coaching':
@@ -334,14 +332,49 @@ export function AppShell() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {fullScreenFlow.includes(screen) ? (
-        renderScreen()
-      ) : (
-        <View style={[styles.shell, compactNav && styles.shellCompact]}>
-          <Sidebar active={screen} compact={compactNav} role={user.role} onNavigate={setScreen} onLogout={handleLogout} />
+      <View style={styles.shell}>
+        {!compactNav && sidebarOpen ? (
+          <Sidebar
+            active={screen}
+            compact={false}
+            role={user.role}
+            onNavigate={setScreen}
+            onLogout={handleLogout}
+            onCollapse={() => setSidebarOpen(false)}
+          />
+        ) : null}
+        <View style={styles.workspace}>
+          {(!sidebarOpen || compactNav) ? <View style={styles.navBar}>
+            <Pressable
+              accessibilityLabel={sidebarOpen ? 'Ocultar menu' : 'Abrir menu'}
+              onPress={() => setSidebarOpen((open) => !open)}
+              style={({ pressed }) => [styles.menuButton, pressed && styles.menuButtonPressed]}
+            >
+              <Menu size={22} color={colors.text} />
+            </Pressable>
+          </View> : null}
           <View style={styles.content}>{renderScreen()}</View>
         </View>
-      )}
+      </View>
+
+      <Modal transparent visible={compactNav && sidebarOpen} animationType="fade" onRequestClose={() => setSidebarOpen(false)}>
+        <View style={styles.drawerOverlay}>
+          <Pressable accessibilityLabel="Cerrar menu" onPress={() => setSidebarOpen(false)} style={styles.drawerDismiss} />
+          <View style={styles.drawer}>
+            <Sidebar
+              active={screen}
+              compact={false}
+              role={user.role}
+              onNavigate={(nextScreen) => {
+                setScreen(nextScreen);
+                setSidebarOpen(false);
+              }}
+              onLogout={handleLogout}
+              onCollapse={() => setSidebarOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal transparent visible={savedVisitId !== null} animationType="fade" onRequestClose={() => setSavedVisitId(null)}>
         <View style={styles.modalOverlay}>
@@ -369,11 +402,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: colors.background,
   },
-  shellCompact: {
-    flexDirection: 'column',
+  workspace: {
+    flex: 1,
+    minWidth: 0,
+  },
+  navBar: {
+    height: 52,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  menuButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuButtonPressed: {
+    backgroundColor: colors.primarySoft,
   },
   content: {
     flex: 1,
+  },
+  drawerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(17,24,39,0.38)',
+  },
+  drawer: {
+    width: 288,
+    height: '100%',
+    backgroundColor: colors.surface,
+  },
+  drawerDismiss: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   loading: {
     flex: 1,

@@ -119,3 +119,18 @@ export interface VisitRecord {
   notes?: string;
   syncedAt?: string;
 }
+
+export type VisitPlanStatus = 'planned' | 'completed' | 'skipped' | 'rescheduled';
+
+export interface VisitPlan {
+  id: string;
+  userId: string;
+  cycleId: string;
+  weekNumber: number;
+  plannedDate: string;
+  order: number;
+  clientType: 'doctor' | 'pharmacy';
+  clientId: string;
+  status: VisitPlanStatus;
+  notes?: string;
+}

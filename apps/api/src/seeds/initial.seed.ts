@@ -117,7 +117,9 @@ export async function seedInitialData(options: { adminName: string; adminEmail: 
     }
   }
 
-  for (let number = 1; number <= 10; number += 1) {
+  await CycleModel.deleteMany({ number: { $gt: 5 } });
+
+  for (let number = 1; number <= 5; number += 1) {
     await CycleModel.updateOne(
       { number },
       {

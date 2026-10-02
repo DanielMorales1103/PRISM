@@ -11,6 +11,7 @@ import { dashboardRouter } from './routes/dashboard.routes.js';
 import { presentationVisitRouter } from './routes/presentation-visit.routes.js';
 import { productRouter } from './routes/product.routes.js';
 import { userRouter } from './routes/user.routes.js';
+import { visitPlanRouter } from './routes/visit-plan.routes.js';
 import { seedInitialData } from './seeds/initial.seed.js';
 
 export const app = express();
@@ -42,8 +43,12 @@ export async function ensureDatabaseSetup() {
   return databaseSetupPromise;
 }
 
-app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: true,
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(express.json());
 
 app.get('/health', async (_req, res) => {
@@ -79,6 +84,7 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/presentation-visits', presentationVisitRouter);
 app.use('/api/products', productRouter);
 app.use('/api/users', userRouter);
+app.use('/api/visit-plans', visitPlanRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ message: 'Route not found' });

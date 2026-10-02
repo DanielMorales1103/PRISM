@@ -1,562 +1,93 @@
-import { useMemo } from 'react';
-import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, UserRound } from 'lucide-react-native';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import type { Cycle, Doctor, Pharmacy, UserProfile, VisitPlan, VisitPlanStatus } from '@prism/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, Save, X } from 'lucide-react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SessionUser } from '../app/types';
+import { api } from '../services/api';
+import { loadToken } from '../services/session';
 import { colors, shadows, spacing } from '../theme/theme';
 
-interface AgendaScreenProps {
-  onBack: () => void;
-}
+interface AgendaScreenProps { currentUser: SessionUser; onBack: () => void; }
+type AgendaClient = Doctor | Pharmacy;
+const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const statuses: Record<VisitPlanStatus, string> = { planned: 'Planificada', rescheduled: 'Reprogramada', completed: 'Completada', skipped: 'Cancelada' };
+const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const planDate = (plan: VisitPlan) => new Date(plan.plannedDate);
+const planTime = (plan: VisitPlan) => planDate(plan).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit', hour12: false });
+const wheelValues = (values: string[], current: string) => { const index = Math.max(values.indexOf(current), 0); return [values[(index - 1 + values.length) % values.length], values[index], values[(index + 1) % values.length]]; };
+function calendarWeeks(date: Date) { const first = new Date(date.getFullYear(), date.getMonth(), 1).getDay(); const count = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate(); const days: Array<number | null> = Array.from({ length: first }, () => null); for (let day = 1; day <= count; day += 1) days.push(day); while (days.length % 7) days.push(null); return Array.from({ length: days.length / 7 }, (_, index) => days.slice(index * 7, index * 7 + 7)); }
 
-interface AgendaEvent {
-  time: string;
-  title: string;
-  meta: string;
-  place: string;
-  note: string;
-}
+export function AgendaScreen({ currentUser, onBack }: AgendaScreenProps) {
+  const manager = ['admin', 'jefe', 'supervisor'].includes(currentUser.role);
+  const today = useMemo(() => new Date(), []);
+  const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [clients, setClients] = useState<AgendaClient[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [plans, setPlans] = useState<VisitPlan[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [cycleId, setCycleId] = useState('');
+  const [dateInput, setDateInput] = useState(dateKey(today));
+  const [timeInput, setTimeInput] = useState('09:00');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [selectorMonth, setSelectorMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState<VisitPlanStatus>('planned');
+  const [plannerUserId, setPlannerUserId] = useState('');
+  const [visitadorSearch, setVisitadorSearch] = useState('');
+  const [visitadorMenuOpen, setVisitadorMenuOpen] = useState(false);
 
-const monthNames = [
-  'Enero',
-  'Febrero',
-  'Marzo',
-  'Abril',
-  'Mayo',
-  'Junio',
-  'Julio',
-  'Agosto',
-  'Septiembre',
-  'Octubre',
-  'Noviembre',
-  'Diciembre',
-];
+  useEffect(() => {
+    if (typeof document === 'undefined' || (!datePickerOpen && !timePickerOpen && !visitadorMenuOpen)) return;
+    const closeMenus = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest('#agenda-client-popover, #agenda-date-popover, #agenda-time-popover, #agenda-visitador-popover')) {
+        setDatePickerOpen(false);
+        setTimePickerOpen(false);
+        setVisitadorMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', closeMenus);
+    return () => document.removeEventListener('mousedown', closeMenus);
+  }, [datePickerOpen, timePickerOpen, visitadorMenuOpen]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState(false);
+  const start = useMemo(() => new Date(month.getFullYear(), month.getMonth(), 1), [month]);
+  const end = useMemo(() => new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59), [month]);
 
-const todayEvents: AgendaEvent[] = [
-  {
-    time: '10:00 AM',
-    title: 'Dr. Ricardo Salinas',
-    meta: 'Dermatologia',
-    place: 'Hospital Herrera Llerandi',
-    note: 'Presentacion de Linea',
-  },
-  {
-    time: '14:30 PM',
-    title: 'Dra. Beatriz Mencos',
-    meta: 'Pediatria',
-    place: 'Centro Medico Z.10',
-    note: 'Lanzamiento Producto',
-  },
-  {
-    time: '16:00 PM',
-    title: 'Dr. Sergio Valdes',
-    meta: 'Endocrinologia',
-    place: 'Multimedica',
-    note: 'Revision tecnica',
-  },
-];
+  useEffect(() => { let live = true; async function load() { try { const token = await loadToken(); if (!token) throw new Error('Sesion no disponible.'); const [clientData, userData, catalogData, planData] = await Promise.all([api.getClients(), api.getUsers(), api.getCatalogs(), api.getVisitPlans(token, start.toISOString(), end.toISOString(), plannerUserId || undefined)]); if (!live) return; setClients([...clientData.doctors, ...clientData.pharmacies]); setUsers(userData); setCycles(catalogData.cycles); setPlans(planData); setCycleId((value) => value || (catalogData.cycles.find((cycle) => cycle.active) ?? catalogData.cycles[0])?.id || ''); setMessage(''); } catch (cause) { if (live) { const detail = cause instanceof Error ? cause.message : ''; setError(true); setMessage(detail === 'Invalid token' ? 'Sesion vencida. Cierra sesion e ingresa de nuevo.' : detail || 'No se pudo cargar la agenda.'); } } } void load(); return () => { live = false; }; }, [plannerUserId, start, end]);
 
-function createMonthWeeks(date: Date) {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: Array<number | null> = Array.from({ length: firstWeekday }, () => null);
+  const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const activeVisitadores = useMemo(() => users.filter((user) => user.active && user.role === 'visitador').sort((first, second) => first.name.localeCompare(second.name)), [users]);
+  const visibleVisitadores = useMemo(() => { const search = visitadorSearch.trim().toLowerCase(); return activeVisitadores.filter((user) => !search || `${user.name} ${user.email}`.toLowerCase().includes(search)).slice(0, 10); }, [activeVisitadores, visitadorSearch]);
+  const selectedPlannerUser = activeVisitadores.find((user) => user.id === plannerUserId);
+  const clientsById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
+  const allowedClients = useMemo(() => clients.filter((client) => client.active && Boolean(client.assignedUserId) && (manager || client.assignedUserId === currentUser.id)), [clients, currentUser.id, manager]);
+  const selectedClient = allowedClients.find((client) => client.id === clientId);
+  const results = useMemo(() => { const search = clientSearch.trim().toLowerCase(); if (!search || selectedClient) return []; return allowedClients.filter((client) => `${client.name} ${client.address}`.toLowerCase().includes(search)).slice(0, 8); }, [allowedClients, clientSearch, selectedClient]);
+  const planMap = useMemo(() => { const map = new Map<string, VisitPlan[]>(); plans.forEach((plan) => { const key = dateKey(planDate(plan)); map.set(key, [...(map.get(key) ?? []), plan]); }); return map; }, [plans]);
+  const selectedPlans = planMap.get(dateKey(selectedDate)) ?? [];
+  const visitador = selectedClient?.assignedUserId ? usersById.get(selectedClient.assignedUserId) : undefined;
+  const reset = () => { setEditingId(null); setClientId(''); setClientSearch(''); setDateInput(dateKey(selectedDate)); setTimeInput('09:00'); setNotes(''); setStatus('planned'); };
+  const edit = (plan: VisitPlan) => { const client = clientsById.get(plan.clientId); const date = planDate(plan); setEditingId(plan.id); setClientId(plan.clientId); setClientSearch(client?.name ?? 'Cliente no disponible'); setDateInput(dateKey(date)); setTimeInput(planTime(plan)); setNotes(plan.notes ?? ''); setStatus(plan.status); setCycleId(plan.cycleId); setMessage(''); };
+  const save = async () => { if (!selectedClient || !cycleId || !visitador) { setError(true); setMessage('Selecciona un cliente con visitador asignado y un ciclo.'); return; } const iso = new Date(`${dateInput}T${timeInput}:00`).toISOString(); if (Number.isNaN(new Date(iso).getTime())) { setError(true); setMessage('Fecha u hora invalida.'); return; } setSaving(true); try { const token = await loadToken(); if (!token) throw new Error('Sesion no disponible.'); let result: VisitPlan; if (editingId) result = await api.updateVisitPlan(token, editingId, { plannedDate: iso, notes, status }); else result = await api.createVisitPlan(token, { userId: visitador.id, cycleId, plannedDate: iso, clientType: selectedClient.type, clientId: selectedClient.id, notes }); setPlans((current) => editingId ? current.map((plan) => plan.id === result.id ? result : plan) : [...current, result]); setError(false); setMessage(editingId ? 'Visita actualizada.' : 'Visita planificada y guardada.'); reset(); } catch (cause) { setError(true); setMessage(cause instanceof Error ? cause.message : 'No se pudo guardar la visita.'); } finally { setSaving(false); } };
 
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(day);
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(null);
-  }
-
-  const monthWeeks: Array<Array<number | null>> = [];
-  for (let index = 0; index < cells.length; index += 7) {
-    monthWeeks.push(cells.slice(index, index + 7));
-  }
-
-  return monthWeeks;
-}
-
-function buildMockEvents(selectedDay: number, daysInMonth: number) {
-  const events: Record<number, AgendaEvent[]> = {
-    [selectedDay]: todayEvents,
-  };
-  const previousVisitDay = Math.max(1, selectedDay - 3);
-  const nextVisitDay = Math.min(daysInMonth, selectedDay + 3);
-
-  if (previousVisitDay !== selectedDay) {
-    events[previousVisitDay] = [
-      {
-        time: '11:00',
-        title: 'Dra. Ana Gomez',
-        meta: 'Dermatologia',
-        place: 'Hospital Centro Medico',
-        note: 'Seguimiento de producto',
-      },
-    ];
-  }
-
-  if (nextVisitDay !== selectedDay && nextVisitDay !== previousVisitDay) {
-    events[nextVisitDay] = [
-      {
-        time: '09:30',
-        title: 'Farmacia San Pablo',
-        meta: 'Farmacia',
-        place: 'Zona 10',
-        note: 'Revision de inventario',
-      },
-    ];
-  }
-
-  return events;
-}
-
-export function AgendaScreen({ onBack }: AgendaScreenProps) {
-  const { width } = useWindowDimensions();
-  const compact = width < 900;
-  const currentDate = useMemo(() => new Date(), []);
-  const selectedDay = currentDate.getDate();
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const weeks = useMemo(() => createMonthWeeks(currentDate), [currentDate]);
-  const dayEvents = useMemo(() => buildMockEvents(selectedDay, daysInMonth), [daysInMonth, selectedDay]);
-  const selectedEvents = dayEvents[selectedDay] ?? [];
-  const monthTitle = `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
-  const agendaTitle = `Agenda del ${selectedDay} de ${monthNames[currentDate.getMonth()]}`;
-
-  return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator>
-        <View style={styles.hero}>
-          <Pressable onPress={onBack} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-            <ArrowLeft size={25} color={colors.onPrimary} />
-          </Pressable>
-          <View style={styles.brandWrap}>
-            <Text style={styles.brand}>prism</Text>
-            <Text style={styles.brandSub}>adding life to living...</Text>
-          </View>
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroTitle}>Mi Agenda</Text>
-            <View style={styles.heroSubtitleRow}>
-              <View style={styles.accentLine} />
-              <Text style={styles.heroSubtitle}>Visualiza tus visitas y compromisos programados.</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.calendarCard}>
-          <View style={styles.calendarHeader}>
-            <Text style={styles.monthTitle}>{monthTitle}</Text>
-            <View style={styles.monthControls}>
-              <ChevronLeft size={22} color={colors.text} />
-              <ChevronRight size={22} color={colors.text} />
-            </View>
-          </View>
-
-          <View style={styles.weekHeader}>
-            {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day) => (
-              <Text key={day} style={styles.weekday}>
-                {day}
-              </Text>
-            ))}
-          </View>
-
-          <View style={styles.calendarGrid}>
-            {weeks.map((week, index) => (
-              <View key={`week-${index}`} style={styles.weekRow}>
-                {week.map((day, dayIndex) => {
-                  const events = day ? dayEvents[day] ?? [] : [];
-                  const selected = day === selectedDay;
-                  return (
-                    <View key={`${index}-${dayIndex}`} style={[styles.dayCell, compact && styles.dayCellCompact, selected && styles.dayCellSelected]}>
-                      {day && (
-                        <>
-                          <View style={styles.dayNumberWrap}>
-                            <Text style={[styles.dayNumber, selected && styles.dayNumberSelected]}>{day}</Text>
-                            {events.length > 0 && <View style={styles.dayDot} />}
-                          </View>
-                          <View style={styles.dayEvents}>
-                            {events.slice(0, compact ? 1 : 2).map((event) => (
-                              <View key={`${day}-${event.time}`} style={[styles.eventChip, selected && styles.eventChipSelected]}>
-                                <Text style={[styles.eventTime, selected && styles.eventTextSelected]}>{event.time}</Text>
-                                <Text style={[styles.eventTitle, selected && styles.eventTextSelected]} numberOfLines={1}>
-                                  {event.title}
-                                </Text>
-                              </View>
-                            ))}
-                            {events.length > (compact ? 1 : 2) && (
-                              <Text style={[styles.moreEvents, selected && styles.eventTextSelected]}>+{events.length - (compact ? 1 : 2)} mas</Text>
-                            )}
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.agendaHeader}>
-          <Text style={styles.agendaTitle}>{agendaTitle}</Text>
-          <Text style={styles.taskBadge}>{selectedEvents.length} TAREAS</Text>
-        </View>
-
-        <View style={styles.eventList}>
-          {selectedEvents.map((event) => (
-            <View key={`${event.time}-${event.title}`} style={styles.visitCard}>
-              <View style={styles.visitMarker}>
-                <View style={styles.visitCircle} />
-              </View>
-              <View style={styles.visitBody}>
-                <View style={styles.visitTimeRow}>
-                  <Clock3 size={15} color="#A1A1AA" />
-                  <Text style={styles.visitTime}>{event.time}</Text>
-                </View>
-                <Text style={styles.visitName}>{event.title}</Text>
-                <View style={styles.visitMetaRow}>
-                  <UserRound size={15} color={colors.muted} />
-                  <Text style={styles.visitMeta}>{event.meta}</Text>
-                  <MapPin size={15} color={colors.muted} />
-                  <Text style={styles.visitMeta}>{event.place}</Text>
-                </View>
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteText}>" {event.note} "</Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.ctaCard}>
-          <View>
-            <Text style={styles.ctaTitle}>Programar Visita</Text>
-            <Text style={styles.ctaText}>Tienes un nuevo compromiso? Organiza tu ruta de la semana.</Text>
-            <View style={styles.ctaButton}>
-              <Text style={styles.ctaButtonText}>Anadir al Calendario</Text>
-            </View>
-          </View>
-          <CalendarDays size={122} color="rgba(255,255,255,0.18)" />
-        </View>
-      </ScrollView>
+  return <View style={styles.screen}><ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.header}><Pressable onPress={onBack} style={styles.back}><ArrowLeft size={22} color={colors.text} /></Pressable><View><Text style={styles.title}>Planificador de visitas</Text><Text style={styles.subtitle}>Agenda real por ciclo, día y cartera asignada.</Text></View></View>
+    <View style={styles.plannerCard}><View style={styles.cardHeader}><View><Text style={styles.cardTitle}>{editingId ? 'Editar visita' : 'Nueva visita planificada'}</Text><Text style={styles.hint}>La visita se guarda en el plan de trabajo, no como visita realizada.</Text></View>{editingId && <Pressable onPress={reset} style={styles.close}><X size={18} color={colors.text} /></Pressable>}</View>{message ? <Text style={[styles.message, error && styles.error]}>{message}</Text> : null}
+      <View style={styles.fields}><View nativeID="agenda-client-popover" style={[styles.field, styles.clientField]}><Text style={styles.label}>Cliente</Text><TextInput value={clientSearch} onChangeText={(value) => { setClientSearch(value); setClientId(''); }} placeholder="Busca nombre o direccion" style={styles.input} />{results.length > 0 && <View style={styles.results}>{results.map((client) => <Pressable key={client.id} onPress={() => { setClientId(client.id); setClientSearch(client.name); }} style={styles.result}><Text style={styles.resultTitle}>{client.name}</Text><Text style={styles.resultText}>{client.type === 'doctor' ? 'Medico' : 'Farmacia'} · {client.address}</Text></Pressable>)}</View>}</View><View style={styles.field}><Text style={styles.label}>Visitador</Text><View style={styles.readonly}><Text style={styles.readonlyTitle}>{visitador?.name ?? 'Selecciona un cliente'}</Text><Text style={styles.resultText}>{visitador?.email ?? 'La asignacion de cartera define el visitador'}</Text></View></View><View nativeID="agenda-date-popover" style={[styles.field, styles.dateField]}><Text style={styles.label}>Fecha</Text><Pressable onPress={() => { const selected = new Date(`${dateInput}T12:00:00`); setSelectorMonth(new Date(selected.getFullYear(), selected.getMonth(), 1)); setDatePickerOpen((open) => !open); setTimePickerOpen(false); }} style={styles.selectorTrigger}><CalendarDays size={18} color={colors.primary} /><Text style={styles.selectorText}>{new Date(`${dateInput}T12:00:00`).toLocaleDateString('es-GT', { day: 'numeric', month: 'short', year: 'numeric' })}</Text></Pressable>{datePickerOpen && <View style={styles.datePicker}><View style={styles.datePickerHeader}><Pressable onPress={() => setSelectorMonth(new Date(selectorMonth.getFullYear(), selectorMonth.getMonth() - 1, 1))} style={styles.pickerNav}><ChevronLeft size={17} color={colors.text} /></Pressable><Text style={styles.pickerTitle}>{months[selectorMonth.getMonth()]} {selectorMonth.getFullYear()}</Text><Pressable onPress={() => setSelectorMonth(new Date(selectorMonth.getFullYear(), selectorMonth.getMonth() + 1, 1))} style={styles.pickerNav}><ChevronRight size={17} color={colors.text} /></Pressable></View><View style={styles.pickerWeek}>{['D','L','M','M','J','V','S'].map((day, index) => <Text key={`${day}-${index}`} style={styles.pickerWeekDay}>{day}</Text>)}</View>{calendarWeeks(selectorMonth).map((week, index) => <View key={index} style={styles.pickerRow}>{week.map((day, dayIndex) => { const value = day ? dateKey(new Date(selectorMonth.getFullYear(), selectorMonth.getMonth(), day)) : ''; const active = value === dateInput; return <Pressable key={dayIndex} disabled={!day} onPress={() => { setDateInput(value); setSelectedDate(new Date(selectorMonth.getFullYear(), selectorMonth.getMonth(), day ?? 1)); setDatePickerOpen(false); }} style={[styles.pickerDay, active && styles.pickerDayActive]}><Text style={[styles.pickerDayText, active && styles.pickerDayTextActive]}>{day ?? ''}</Text></Pressable>; })}</View>)}</View>}</View><View nativeID="agenda-time-popover" style={[styles.field, styles.timeField]}><Text style={styles.label}>Hora</Text><Pressable onPress={() => { setTimePickerOpen((open) => !open); setDatePickerOpen(false); }} style={styles.selectorTrigger}><Clock3 size={18} color={colors.primary} /><Text style={styles.selectorText}>{timeInput}</Text></Pressable>{timePickerOpen && <View style={styles.timePicker}><View style={styles.timePickerHeader}><Text style={styles.timePickerTitle}>Selecciona horario</Text><View style={styles.timeValue}><Text style={styles.timeValueText}>{timeInput}</Text></View></View><View style={styles.timeWheel}><View style={styles.wheelColumn}>{wheelValues(['08','09','10','11','12','13','14','15','16','17'], timeInput.split(':')[0] ?? '09').map((hour, index) => <Pressable key={`${hour}-${index}`} onPress={() => setTimeInput(`${hour}:${timeInput.split(':')[1] ?? '00'}`)} style={[styles.wheelOption, index === 1 && styles.wheelOptionActive]}><Text style={[styles.wheelText, index === 1 && styles.wheelTextActive]}>{hour}</Text></Pressable>)}</View><Text style={styles.timeSeparator}>:</Text><View style={styles.wheelColumn}>{wheelValues(['00','15','30','45'], timeInput.split(':')[1] ?? '00').map((minute, index) => <Pressable key={`${minute}-${index}`} onPress={() => setTimeInput(`${timeInput.split(':')[0] ?? '09'}:${minute}`)} style={[styles.wheelOption, index === 1 && styles.wheelOptionActive]}><Text style={[styles.wheelText, index === 1 && styles.wheelTextActive]}>{minute}</Text></Pressable>)}</View></View><Text style={styles.timePickerHint}>Toca el valor superior o inferior para cambiarlo.</Text></View>}</View><View style={styles.field}><Text style={styles.label}>Ciclo</Text><View style={styles.cycles}>{cycles.map((cycle) => <Pressable key={cycle.id} onPress={() => setCycleId(cycle.id)} style={[styles.cycle, cycleId === cycle.id && styles.cycleActive]}><Text style={[styles.cycleText, cycleId === cycle.id && styles.cycleTextActive]}>{cycle.number}</Text></Pressable>)}</View></View><View style={styles.field}><Text style={styles.label}>Notas</Text><TextInput value={notes} onChangeText={setNotes} placeholder="Opcional" style={styles.input} /></View></View>
+      {editingId && <View style={styles.statuses}>{(Object.keys(statuses) as VisitPlanStatus[]).map((key) => <Pressable key={key} onPress={() => setStatus(key)} style={[styles.status, status === key && styles.statusActive]}><Text style={[styles.statusText, status === key && styles.statusTextActive]}>{statuses[key]}</Text></Pressable>)}</View>}<Pressable disabled={saving} onPress={save} style={[styles.save, saving && styles.disabled]}><Save size={18} color={colors.onPrimary} /><Text style={styles.saveText}>{saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Planificar visita'}</Text></Pressable>
     </View>
-  );
+    <View style={styles.calendarCard}><View style={styles.monthRow}><View><Text style={styles.monthTitle}>{months[month.getMonth()]} {month.getFullYear()}</Text><Text style={styles.hint}>{plans.length} visitas planificadas este mes</Text></View><View style={styles.navs}><Pressable onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} style={styles.nav}><ChevronLeft size={20} color={colors.text} /></Pressable><Pressable onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} style={styles.nav}><ChevronRight size={20} color={colors.text} /></Pressable></View></View>{manager && <View nativeID="agenda-visitador-popover" style={styles.visitadorFilter}><Text style={styles.label}>Agenda de</Text><Pressable onPress={() => setVisitadorMenuOpen((open) => !open)} style={styles.visitadorTrigger}><View><Text style={styles.readonlyTitle}>{selectedPlannerUser?.name ?? 'Todo el equipo'}</Text><Text style={styles.resultText}>{selectedPlannerUser?.email ?? `${activeVisitadores.length} visitadores disponibles`}</Text></View><Text style={styles.chevron}>v</Text></Pressable>{visitadorMenuOpen && <View style={styles.visitadorMenu}><TextInput value={visitadorSearch} onChangeText={setVisitadorSearch} placeholder="Buscar visitador" style={styles.visitadorInput} /><Pressable onPress={() => { setPlannerUserId(''); setVisitadorSearch(''); setVisitadorMenuOpen(false); }} style={styles.visitadorOption}><Text style={styles.resultTitle}>Todo el equipo</Text><Text style={styles.resultText}>Agenda consolidada</Text></Pressable>{visibleVisitadores.map((user) => <Pressable key={user.id} onPress={() => { setPlannerUserId(user.id); setVisitadorSearch(''); setVisitadorMenuOpen(false); }} style={styles.visitadorOption}><Text style={styles.resultTitle}>{user.name}</Text><Text style={styles.resultText}>{user.email}</Text></Pressable>)}</View>}</View>}<View style={styles.week}>{['D','L','M','M','J','V','S'].map((day, index) => <Text key={`${day}-${index}`} style={styles.weekDay}>{day}</Text>)}</View><View style={styles.grid}>{calendarWeeks(month).map((week, index) => <View key={index} style={styles.weekRow}>{week.map((day, dayIndex) => { const date = day ? new Date(month.getFullYear(), month.getMonth(), day) : null; const dayPlans = date ? planMap.get(dateKey(date)) ?? [] : []; const active = date && dateKey(date) === dateKey(selectedDate); return <Pressable key={dayIndex} disabled={!date} onPress={() => date && setSelectedDate(date)} style={[styles.day, active && styles.dayActive]}>{date && <><Text style={[styles.dayNumber, active && styles.dayNumberActive]}>{day}</Text>{dayPlans.slice(0, 2).map((plan) => <Text key={plan.id} numberOfLines={1} style={[styles.dayPlan, plan.status === 'skipped' && styles.dayPlanCancelled]}>{planTime(plan)} {clientsById.get(plan.clientId)?.name ?? 'Cliente'}</Text>)}{dayPlans.length > 2 && <Text style={styles.more}>+{dayPlans.length - 2}</Text>}</>}</Pressable>; })}</View>)}</View></View>
+    <View style={styles.agendaHeader}><View><Text style={styles.agendaTitle}>Agenda del {selectedDate.getDate()} de {months[selectedDate.getMonth()]}</Text><Text style={styles.hint}>{selectedPlans.length} visitas</Text></View><CalendarDays size={24} color={colors.primary} /></View><View style={styles.list}>{selectedPlans.length === 0 ? <View style={styles.empty}><CalendarDays size={28} color={colors.primary} /><Text style={styles.emptyTitle}>Sin visitas planificadas</Text><Text style={styles.hint}>Crea una visita para este día usando la cartera asignada.</Text></View> : selectedPlans.map((plan) => { const client = clientsById.get(plan.clientId); return <Pressable key={plan.id} onPress={() => edit(plan)} style={styles.plan}><View style={styles.time}><Clock3 size={16} color={colors.primary} /><Text style={styles.timeText}>{planTime(plan)}</Text></View><View style={styles.planInfo}><View style={styles.planHeader}><Text style={styles.planName}>{client?.name ?? 'Cliente eliminado'}</Text><Text style={[styles.badge, plan.status === 'skipped' && styles.badgeCancelled]}>{statuses[plan.status]}</Text></View><Text style={styles.meta}><MapPin size={13} color={colors.muted} /> {client?.address ?? 'Sin direccion'}</Text><Text style={styles.meta}>Visitador: {usersById.get(plan.userId)?.name ?? 'No disponible'} · Ciclo {cycles.find((cycle) => cycle.id === plan.cycleId)?.number ?? '-'}</Text>{plan.notes ? <Text style={styles.note}>{plan.notes}</Text> : null}</View></Pressable>; })}</View>
+  </ScrollView></View>;
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    paddingBottom: spacing.xl,
-  },
-  hero: {
-    minHeight: 280,
-    backgroundColor: colors.black,
-    borderBottomLeftRadius: 36,
-    borderBottomRightRadius: 36,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
-    overflow: 'hidden',
-  },
-  backButton: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: '#171717',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#252525',
-  },
-  pressed: {
-    opacity: 0.72,
-  },
-  brandWrap: {
-    position: 'absolute',
-    top: 72,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  brand: {
-    color: colors.onPrimary,
-    fontSize: 36,
-    fontWeight: '300',
-    letterSpacing: 0,
-  },
-  brandSub: {
-    color: '#BDBDBD',
-    fontSize: 9,
-    marginTop: -4,
-  },
-  heroCopy: {
-    marginTop: spacing.xl,
-  },
-  heroTitle: {
-    color: colors.onPrimary,
-    fontSize: 36,
-    fontWeight: '900',
-  },
-  heroSubtitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  accentLine: {
-    width: 3,
-    height: 30,
-    backgroundColor: colors.primary,
-  },
-  heroSubtitle: {
-    color: '#A3A3A3',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  calendarCard: {
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.xl,
-    backgroundColor: colors.surface,
-    borderRadius: 28,
-    padding: spacing.xl,
-    ...shadows.card,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  monthTitle: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  monthControls: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-  },
-  weekHeader: {
-    flexDirection: 'row',
-    marginBottom: spacing.sm,
-  },
-  weekday: {
-    flex: 1,
-    color: '#B8BBC1',
-    fontSize: 13,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  calendarGrid: {
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderColor: '#F0F0F1',
-  },
-  weekRow: {
-    flexDirection: 'row',
-  },
-  dayCell: {
-    flex: 1,
-    minHeight: 118,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#F0F0F1',
-    padding: spacing.sm,
-    gap: spacing.xs,
-  },
-  dayCellCompact: {
-    minHeight: 94,
-    padding: 6,
-  },
-  dayCellSelected: {
-    backgroundColor: colors.black,
-    borderRadius: 16,
-    transform: [{ scale: 1.02 }],
-    ...shadows.card,
-  },
-  dayNumberWrap: {
-    alignItems: 'center',
-    gap: 3,
-  },
-  dayNumber: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  dayNumberSelected: {
-    color: colors.onPrimary,
-  },
-  dayDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-  },
-  dayEvents: {
-    gap: 4,
-    marginTop: spacing.xs,
-  },
-  eventChip: {
-    borderRadius: 10,
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-  },
-  eventChipSelected: {
-    backgroundColor: 'rgba(255,87,16,0.22)',
-  },
-  eventTime: {
-    color: colors.primary,
-    fontSize: 9,
-    fontWeight: '900',
-  },
-  eventTitle: {
-    color: colors.text,
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  eventTextSelected: {
-    color: colors.onPrimary,
-  },
-  moreEvents: {
-    color: colors.primary,
-    fontSize: 10,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  agendaHeader: {
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  agendaTitle: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  taskBadge: {
-    color: colors.primary,
-    backgroundColor: colors.primarySoft,
-    borderRadius: 18,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  eventList: {
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.md,
-    gap: spacing.md,
-  },
-  visitCard: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
-  },
-  visitMarker: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  visitCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  visitBody: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  visitTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  visitTime: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  visitName: {
-    color: colors.text,
-    fontSize: 21,
-    fontWeight: '900',
-  },
-  visitMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  visitMeta: {
-    color: colors.muted,
-    fontSize: 14,
-    marginRight: spacing.sm,
-  },
-  noteBox: {
-    backgroundColor: '#F1F1F2',
-    borderRadius: 14,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderWidth: 1,
-    borderColor: '#E1E1E3',
-  },
-  noteText: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '900',
-    fontStyle: 'italic',
-  },
-  ctaCard: {
-    marginHorizontal: spacing.xl,
-    marginTop: spacing.xl,
-    minHeight: 170,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    padding: spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    overflow: 'hidden',
-    ...shadows.card,
-  },
-  ctaTitle: {
-    color: colors.onPrimary,
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  ctaText: {
-    color: colors.onPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  ctaButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  ctaButtonText: {
-    color: colors.primary,
-    fontSize: 15,
-    fontWeight: '900',
-  },
+  screen:{flex:1,backgroundColor:colors.background},content:{padding:spacing.lg,gap:spacing.lg,paddingBottom:spacing.xxl},header:{flexDirection:'row',alignItems:'center',gap:spacing.md},back:{width:44,height:44,alignItems:'center',justifyContent:'center',backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,borderRadius:8},title:{fontSize:29,fontWeight:'900',color:colors.text},subtitle:{color:colors.muted,marginTop:3},card:{position:'relative',zIndex:1,backgroundColor:colors.surface,borderRadius:8,borderWidth:1,borderColor:colors.border,padding:spacing.lg,gap:spacing.md,...shadows.card},calendarCard:{position:'relative',zIndex:100,backgroundColor:colors.surface,borderRadius:8,borderWidth:1,borderColor:colors.border,padding:spacing.lg,gap:spacing.md,...shadows.card},plannerCard:{position:'relative',zIndex:300,backgroundColor:colors.surface,borderRadius:8,borderWidth:1,borderColor:colors.border,padding:spacing.lg,gap:spacing.md,...shadows.card},cardHeader:{flexDirection:'row',justifyContent:'space-between',gap:spacing.md},cardTitle:{fontSize:21,fontWeight:'900',color:colors.text},hint:{color:colors.muted,fontSize:13,marginTop:3},close:{width:34,height:34,alignItems:'center',justifyContent:'center',backgroundColor:'#F3F4F6',borderRadius:8},visitadorFilter:{position:'relative',zIndex:400,alignSelf:'flex-start',width:300,gap:6},visitadorTrigger:{minHeight:52,flexDirection:'row',justifyContent:'space-between',alignItems:'center',borderWidth:1,borderColor:colors.border,borderRadius:8,paddingHorizontal:13,paddingVertical:6,backgroundColor:colors.surface},chevron:{color:colors.muted,fontSize:18,fontWeight:'900'},visitadorMenu:{position:'absolute',top:72,left:0,right:0,zIndex:1000,borderWidth:1,borderColor:colors.border,borderRadius:8,overflow:'hidden',backgroundColor:colors.surface,maxHeight:340,...shadows.card},visitadorInput:{minHeight:42,borderBottomWidth:1,borderBottomColor:colors.border,paddingHorizontal:12,color:colors.text},visitadorOption:{padding:10,borderBottomWidth:1,borderBottomColor:colors.border},message:{color:colors.success,fontWeight:'800'},error:{color:colors.primaryDark},fields:{position:'relative',zIndex:100,flexDirection:'row',flexWrap:'wrap',gap:spacing.md},field:{flexBasis:220,flexGrow:1,gap:6},clientField:{position:'relative',zIndex:200,elevation:20},dateField:{position:'relative',zIndex:1000,elevation:1000},timeField:{position:'relative',zIndex:1000,elevation:1000},label:{fontSize:13,fontWeight:'900',color:colors.text},input:{minHeight:46,borderWidth:1,borderColor:colors.border,borderRadius:8,paddingHorizontal:13,color:colors.text},selectorTrigger:{minHeight:46,borderWidth:1,borderColor:colors.border,borderRadius:8,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:9,backgroundColor:colors.surface},selectorText:{color:colors.text,fontWeight:'800'},datePicker:{position:'absolute',top:72,left:0,width:300,zIndex:1200,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:10,backgroundColor:colors.surface,...shadows.card},datePickerHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:8},pickerNav:{width:30,height:30,alignItems:'center',justifyContent:'center',backgroundColor:'#F3F4F6',borderRadius:8},pickerTitle:{fontWeight:'900',color:colors.text},pickerWeek:{flexDirection:'row'},pickerWeekDay:{width:'14.2857%',textAlign:'center',fontSize:11,fontWeight:'900',color:colors.muted,paddingVertical:4},pickerRow:{flexDirection:'row'},pickerDay:{width:'14.2857%',height:34,alignItems:'center',justifyContent:'center',borderRadius:8},pickerDayActive:{backgroundColor:colors.primary},pickerDayText:{fontSize:12,fontWeight:'800',color:colors.text},pickerDayTextActive:{color:colors.onPrimary},timePicker:{position:'absolute',top:72,left:0,width:300,zIndex:1200,borderWidth:1,borderColor:colors.border,borderRadius:12,padding:12,backgroundColor:colors.surface,gap:10,overflow:'hidden',...shadows.card},timePickerHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},timePickerTitle:{fontSize:14,fontWeight:'900',color:colors.text},timeValue:{backgroundColor:'#FFF0EA',borderRadius:14,paddingHorizontal:11,paddingVertical:5},timeValueText:{fontSize:13,fontWeight:'900',color:colors.primary},timeWheel:{height:116,flexDirection:'row',alignItems:'center',justifyContent:'center',backgroundColor:'#FAFAFA',borderRadius:10,overflow:'hidden'},wheelColumn:{width:78,height:96,justifyContent:'center',overflow:'hidden'},wheelOption:{height:32,alignItems:'center',justifyContent:'center'},wheelOptionActive:{backgroundColor:'#EEF0F3',borderRadius:16},wheelText:{fontSize:14,color:'#B9C0CA'},wheelTextActive:{fontSize:22,fontWeight:'900',color:colors.text},timeSeparator:{fontSize:24,fontWeight:'900',color:colors.text,paddingHorizontal:4},timePickerHint:{fontSize:12,color:colors.muted,textAlign:'center'},readonly:{minHeight:46,borderWidth:1,borderColor:colors.border,borderRadius:8,paddingHorizontal:13,paddingVertical:6,backgroundColor:'#F9FAFB'},readonlyTitle:{fontWeight:'800',color:colors.text},results:{position:'absolute',top:70,left:0,right:0,zIndex:1000,borderWidth:1,borderColor:colors.border,borderRadius:8,overflow:'hidden',backgroundColor:colors.surface,maxHeight:280,...shadows.card},result:{padding:10,borderBottomWidth:1,borderBottomColor:colors.border},resultTitle:{fontWeight:'900',color:colors.text},resultText:{color:colors.muted,fontSize:12,marginTop:2},cycles:{flexDirection:'row',flexWrap:'wrap',gap:5},cycle:{width:32,height:32,borderRadius:8,borderWidth:1,borderColor:colors.border,alignItems:'center',justifyContent:'center'},cycleActive:{backgroundColor:colors.primarySoft,borderColor:colors.primary},cycleText:{fontWeight:'900',color:colors.muted},cycleTextActive:{color:colors.primary},statuses:{position:'relative',zIndex:1,flexDirection:'row',flexWrap:'wrap',gap:spacing.sm},status:{paddingHorizontal:10,paddingVertical:8,borderWidth:1,borderColor:colors.border,borderRadius:8},statusActive:{borderColor:colors.primary,backgroundColor:colors.primarySoft},statusText:{color:colors.muted,fontWeight:'800',fontSize:13},statusTextActive:{color:colors.primary},save:{position:'relative',zIndex:1,alignSelf:'flex-start',flexDirection:'row',gap:8,alignItems:'center',backgroundColor:colors.primary,borderRadius:8,paddingHorizontal:18,paddingVertical:13},saveText:{color:colors.onPrimary,fontWeight:'900'},disabled:{opacity:.6},monthRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},monthTitle:{fontSize:22,fontWeight:'900',color:colors.text},navs:{flexDirection:'row',gap:spacing.sm},nav:{width:38,height:38,alignItems:'center',justifyContent:'center',backgroundColor:'#F3F4F6',borderRadius:8},week:{flexDirection:'row'},weekDay:{flex:1,textAlign:'center',fontSize:12,fontWeight:'900',color:colors.muted},grid:{borderTopWidth:1,borderLeftWidth:1,borderColor:colors.border},weekRow:{flexDirection:'row'},day:{flex:1,minHeight:92,padding:5,borderRightWidth:1,borderBottomWidth:1,borderColor:colors.border,gap:3},dayActive:{backgroundColor:'#FFF7F3'},dayNumber:{textAlign:'center',fontWeight:'900',color:colors.text,fontSize:13},dayNumberActive:{color:colors.primary},dayPlan:{backgroundColor:colors.primarySoft,borderRadius:5,padding:3,fontSize:9,fontWeight:'800',color:colors.primaryDark},dayPlanCancelled:{backgroundColor:'#F3F4F6',color:colors.muted},more:{fontSize:10,color:colors.primary,fontWeight:'900',textAlign:'center'},agendaHeader:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},agendaTitle:{fontSize:22,fontWeight:'900',color:colors.text},list:{gap:spacing.md},empty:{minHeight:150,alignItems:'center',justifyContent:'center',gap:7,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:spacing.lg},emptyTitle:{fontWeight:'900',fontSize:17,color:colors.text},plan:{flexDirection:'row',gap:spacing.md,backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,borderRadius:8,padding:spacing.md,...shadows.card},time:{width:70,alignItems:'center',justifyContent:'center',gap:4,backgroundColor:colors.primarySoft,borderRadius:8},timeText:{fontSize:13,fontWeight:'900',color:colors.primaryDark},planInfo:{flex:1,gap:5},planHeader:{flexDirection:'row',justifyContent:'space-between',gap:8},planName:{flex:1,fontSize:17,fontWeight:'900',color:colors.text},badge:{fontSize:11,fontWeight:'900',color:colors.success,backgroundColor:'#ECFDF5',paddingHorizontal:8,paddingVertical:4,borderRadius:8},badgeCancelled:{color:colors.muted,backgroundColor:'#F3F4F6'},meta:{fontSize:13,color:colors.muted},note:{fontSize:13,color:colors.text}
 });
