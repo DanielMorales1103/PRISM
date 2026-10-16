@@ -24,6 +24,7 @@ const PresentedFlowSchema = new Schema(
 const PresentationVisitSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    doctorId: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
     doctorName: { type: String, trim: true },
     doctorSpecialty: { type: String, trim: true },
     clinic: { type: String, trim: true },
@@ -42,7 +43,7 @@ const PresentationVisitSchema = new Schema(
     requestedProducts: [RequestedProductSchema],
     probablePurchaseDate: { type: String, trim: true },
     competitionDetected: { type: String, trim: true },
-    interestLevel: { type: Number, min: 1, max: 5, default: 3 },
+    interestLevel: { type: Number, min: 1, max: 5 },
     requiresFollowUp: { type: Boolean, default: false },
     urgentRequest: { type: Boolean, default: false },
     finalComments: { type: String, trim: true },

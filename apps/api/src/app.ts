@@ -7,11 +7,13 @@ import { ensureCollectionsAndIndexes, getModelNames } from './models/index.js';
 import { authRouter } from './routes/auth.routes.js';
 import { catalogRouter } from './routes/catalog.routes.js';
 import { clientRouter } from './routes/client.routes.js';
+import { cycleRouter } from './routes/cycle.routes.js';
 import { dashboardRouter } from './routes/dashboard.routes.js';
 import { presentationVisitRouter } from './routes/presentation-visit.routes.js';
 import { productRouter } from './routes/product.routes.js';
 import { userRouter } from './routes/user.routes.js';
 import { visitPlanRouter } from './routes/visit-plan.routes.js';
+import { visitRouter } from './routes/visit.routes.js';
 import { seedInitialData } from './seeds/initial.seed.js';
 
 export const app = express();
@@ -80,11 +82,13 @@ app.use('/api', async (_req, res, next) => {
 app.use('/api/auth', authRouter);
 app.use('/api/catalogs', catalogRouter);
 app.use('/api/clients', clientRouter);
+app.use('/api/cycles', cycleRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/presentation-visits', presentationVisitRouter);
 app.use('/api/products', productRouter);
 app.use('/api/users', userRouter);
 app.use('/api/visit-plans', visitPlanRouter);
+app.use('/api/visits', visitRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ message: 'Route not found' });

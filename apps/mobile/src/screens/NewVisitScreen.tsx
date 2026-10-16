@@ -209,6 +209,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
           <Pressable
             onPress={() =>
               onContinue({
+                id: selectedDoctor?.id,
                 name: selectedDoctor?.name ?? doctorQuery.trim(),
                 specialty: selectedDoctor?.specialty,
                 clinic: selectedDoctor?.clinic,

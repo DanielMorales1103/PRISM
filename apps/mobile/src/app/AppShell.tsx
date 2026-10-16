@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, StyleSheet, T
 import { AdminScreen } from '../screens/AdminScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
+import { CyclesScreen } from '../screens/CyclesScreen';
 import { ExperienceDigitalScreen } from '../screens/ExperienceDigitalScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { InteractivePresentationScreen } from '../screens/InteractivePresentationScreen';
@@ -12,21 +13,25 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { MapScreen } from '../screens/MapScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { VisitadoresScreen } from '../screens/VisitadoresScreen';
+import { VisitHistoryScreen } from '../screens/VisitHistoryScreen';
 import { MedicalEvidenceScreen } from '../screens/MedicalEvidenceScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
 import { NewVisitScreen } from '../screens/NewVisitScreen';
+import { OfflineVisitScreen } from '../screens/OfflineVisitScreen';
 import { ProductSelectionScreen } from '../screens/ProductSelectionScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { StorytellingPresentationScreen } from '../screens/StorytellingPresentationScreen';
 import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
 import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
 import { Sidebar } from '../components/Sidebar';
+import { OfflineVisitSyncModal } from '../components/OfflineVisitSyncModal';
 import { canAccessScreen } from './permissions';
 import { AppScreen, SessionUser, VisitDoctorSnapshot } from './types';
 import { colors } from '../theme/theme';
 import { api } from '../services/api';
 import { clearSession, loadSession, loadToken } from '../services/session';
 import { saveSession } from '../services/session';
+import { loadOfflineVisits, OfflineVisitDraft } from '../services/offlineVisitQueue';
 import { Menu } from 'lucide-react-native';
 
 interface VisitDraft {
@@ -53,6 +58,7 @@ export function AppShell() {
   const [visitDraft, setVisitDraft] = useState<VisitDraft>({});
   const [savingVisit, setSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
+  const [offlineVisits, setOfflineVisits] = useState<OfflineVisitDraft[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
@@ -69,6 +75,7 @@ export function AppShell() {
       .then((session) => {
         if (session) {
           setUser(session.user);
+          void loadOfflineVisits().then(setOfflineVisits);
           setScreen('home');
           return;
         }
@@ -82,6 +89,7 @@ export function AppShell() {
 
   const handleLogin = (nextUser: SessionUser) => {
     setUser(nextUser);
+    void loadOfflineVisits().then(setOfflineVisits);
     setScreen('home');
   };
 
@@ -136,6 +144,11 @@ export function AppShell() {
       return;
     }
 
+    if (!visitDraft.doctor?.id) {
+      Alert.alert('Selecciona un médico registrado', 'Busca y selecciona un médico de tu cartera antes de guardar la visita.');
+      return;
+    }
+
     setSavingVisit(true);
 
     try {
@@ -146,6 +159,7 @@ export function AppShell() {
       }
 
       const savedVisit = await api.savePresentationVisit(token, {
+        doctorId: visitDraft.doctor?.id,
         doctorName: visitDraft.doctor?.name,
         doctorSpecialty: visitDraft.doctor?.specialty,
         clinic: visitDraft.doctor?.clinic,
@@ -187,8 +201,12 @@ export function AppShell() {
     );
   }
 
+  if (screen === 'offline-visit') {
+    return <OfflineVisitScreen onBack={() => setScreen('login')} onSaved={() => setScreen('login')} />;
+  }
+
   if (screen === 'login' || !user) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return <LoginScreen onLogin={handleLogin} onOffline={() => setScreen('offline-visit')} />;
   }
 
   const renderScreen = () => {
@@ -203,6 +221,8 @@ export function AppShell() {
         return <AdminScreen currentUser={user} type="products" />;
       case 'admin-catalogs':
         return <AdminScreen currentUser={user} type="catalogs" />;
+      case 'admin-cycles':
+        return <CyclesScreen />;
       case 'dashboard':
         return <KpiDashboardScreen onBack={() => setScreen('home')} />;
       case 'planner':
@@ -327,6 +347,7 @@ export function AppShell() {
       case 'map':
         return <MapScreen currentUser={user} />;
       case 'visits':
+        return <VisitHistoryScreen currentUser={user} />;
       case 'marketing':
       case 'coaching':
       case 'billing':
@@ -395,6 +416,7 @@ export function AppShell() {
           </View>
         </View>
       </Modal>
+      <OfflineVisitSyncModal user={user} queue={offlineVisits} onSynced={(id) => setOfflineVisits((current) => current.filter((visit) => visit.id !== id))} />
     </SafeAreaView>
   );
 }

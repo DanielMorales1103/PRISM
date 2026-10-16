@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { Types } from 'mongoose';
 import { AuthenticatedRequest, requireAuth } from '../middleware/auth.middleware.js';
 import { PresentationVisitModel } from '../models/presentation-visit.model.js';
+import { VisitModel } from '../models/visit.model.js';
 
 export const presentationVisitRouter = Router();
 
@@ -27,8 +28,11 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
       })
     : [];
 
+  const completedAt = new Date();
+  const doctorId = toObjectId(body.doctorId);
   const visit = await PresentationVisitModel.create({
     userId: new Types.ObjectId(req.auth.sub),
+    doctorId,
     doctorName: body.doctorName,
     doctorSpecialty: body.doctorSpecialty,
     clinic: body.clinic,
@@ -46,8 +50,27 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
     requiresFollowUp: body.requiresFollowUp,
     urgentRequest: body.urgentRequest,
     finalComments: body.finalComments,
-    completedAt: new Date(),
+    completedAt,
   });
 
-  res.status(201).json({ ok: true, id: visit.id });
+  const deliveredProducts = Array.isArray(body.requestedProducts)
+    ? body.requestedProducts
+      .map((product) => product as Record<string, unknown>)
+      .map((product) => ({ productId: toObjectId(product.productId), productName: typeof product.productName === 'string' ? product.productName.trim() : '', line: typeof product.line === 'string' ? product.line.trim() : '', quantity: Number(product.quantity) || 0 }))
+      .filter((product) => (product.productId || product.productName) && product.quantity > 0)
+    : [];
+
+  const registeredVisit = doctorId
+    ? await VisitModel.create({
+      userId: new Types.ObjectId(req.auth.sub),
+      clientType: 'doctor',
+      clientId: doctorId,
+      visitedAt: completedAt,
+      productsDelivered: deliveredProducts,
+      notes: typeof body.finalComments === 'string' ? body.finalComments.trim() : '',
+      syncedAt: completedAt,
+    })
+    : null;
+
+  res.status(201).json({ ok: true, id: visit.id, visitId: registeredVisit?.id, completedAt });
 });

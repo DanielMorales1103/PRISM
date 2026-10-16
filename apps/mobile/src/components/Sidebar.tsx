@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookOpenCheck,
+  CalendarRange,
   CreditCard,
   History,
   Home,
@@ -33,7 +34,7 @@ interface SidebarProps {
 const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ size: number; color: string }> }> = [
   { screen: 'home', label: 'Inicio', icon: Home },
   { screen: 'dashboard', label: 'KPIs Comerciales', icon: BarChart3 },
-  { screen: 'clients', label: 'Clientes', icon: Users },
+  { screen: 'clients', label: 'Médicos', icon: Users },
   { screen: 'visitadores', label: 'Visitadores', icon: UserRoundCheck },
   { screen: 'map', label: 'Mapa Inteligente', icon: Map },
   { screen: 'visits', label: 'Historial CRM', icon: History },
@@ -42,6 +43,7 @@ const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ siz
   { screen: 'billing', label: 'Ventas/Cobros', icon: CreditCard },
   { screen: 'admin-users', label: 'Usuarios', icon: Settings },
   { screen: 'admin-products', label: 'Productos', icon: PackagePlus },
+  { screen: 'admin-cycles', label: 'Ciclos', icon: CalendarRange },
 ];
 
 export function Sidebar({ active, compact, role, onNavigate, onLogout, onCollapse }: SidebarProps) {

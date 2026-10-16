@@ -72,7 +72,7 @@ async function buildPlanData(body: Record<string, unknown>, currentUserId: strin
     CycleModel.findById(cycleId).lean(),
   ]);
   if (!visitador) throw new Error('Visitador no encontrado o inactivo.');
-  if (!cycle || cycle.number > 5) throw new Error('Ciclo no encontrado.');
+  if (!cycle) throw new Error('Ciclo no encontrado.');
 
   await validateAssignment(clientType, clientId, requestedUserId);
   const elapsedDays = Math.floor((plannedDate.getTime() - cycle.startsAt.getTime()) / 86_400_000);
@@ -129,6 +129,73 @@ visitPlanRouter.post('/', requireAuth, requireRoles('visitador', 'supervisor', '
   }
 });
 
+visitPlanRouter.post('/:id/replicate', requireAuth, requireRoles('visitador', 'supervisor', 'jefe', 'admin'), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const source = await VisitPlanModel.findById(req.params.id).lean();
+    if (!source) {
+      res.status(404).json({ message: 'Visita planificada no encontrada.' });
+      return;
+    }
+
+    const manager = isManager(req.auth?.role);
+    if (!manager && source.userId.toString() !== req.auth!.sub) {
+      res.status(403).json({ message: 'No puedes replicar esta visita.' });
+      return;
+    }
+
+    const cycleIds = Array.isArray(req.body?.cycleIds) ? [...new Set(req.body.cycleIds.filter((id: unknown): id is string => typeof id === 'string'))] : [];
+    if (!cycleIds.length) {
+      res.status(400).json({ message: 'Selecciona al menos un ciclo destino.' });
+      return;
+    }
+
+    const cycles = await CycleModel.find({ _id: { $in: cycleIds } }).lean();
+    if (cycles.length !== cycleIds.length) throw new Error('Uno de los ciclos seleccionados no existe.');
+
+    const sourceDate = new Date(source.plannedDate);
+    const weekdayFromMonday = (sourceDate.getDay() + 6) % 7;
+    const created = [];
+    let skipped = 0;
+
+    for (const cycle of cycles) {
+      const plannedDate = new Date(cycle.startsAt);
+      plannedDate.setDate(plannedDate.getDate() + ((source.weekNumber - 1) * 7) + weekdayFromMonday);
+      plannedDate.setHours(sourceDate.getHours(), sourceDate.getMinutes(), 0, 0);
+
+      const exists = await VisitPlanModel.exists({
+        userId: source.userId,
+        clientId: source.clientId,
+        cycleId: cycle._id,
+        plannedDate,
+      });
+      if (exists) {
+        skipped += 1;
+        continue;
+      }
+
+      const data = await buildPlanData({
+        userId: source.userId.toString(),
+        cycleId: cycle._id.toString(),
+        clientType: source.clientType,
+        clientId: source.clientId.toString(),
+        plannedDate: plannedDate.toISOString(),
+        order: source.order,
+        notes: source.notes,
+      }, req.auth!.sub, manager);
+      const plan = await VisitPlanModel.create(data);
+      created.push(serializePlan(plan));
+    }
+
+    res.status(201).json({ created, skipped });
+  } catch (error) {
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    next(error);
+  }
+});
+
 visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor', 'jefe', 'admin'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const plan = await VisitPlanModel.findById(req.params.id);
@@ -142,8 +209,33 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
     }
 
     const body = req.body ?? {};
-    if (body.plannedDate !== undefined) plan.plannedDate = toPlannedDate(body.plannedDate);
-    if (body.order !== undefined) plan.order = Math.max(1, Number(body.order) || 1);
+    const manager = isManager(req.auth?.role);
+    const changesPlanContext = body.userId !== undefined || body.cycleId !== undefined || body.clientId !== undefined || body.clientType !== undefined;
+
+    if (changesPlanContext) {
+      const data = await buildPlanData({
+        userId: body.userId ?? plan.userId.toString(),
+        cycleId: body.cycleId ?? plan.cycleId.toString(),
+        clientId: body.clientId ?? plan.clientId.toString(),
+        clientType: body.clientType ?? plan.clientType,
+        plannedDate: body.plannedDate ?? plan.plannedDate.toISOString(),
+        order: body.order ?? plan.order,
+        notes: body.notes ?? plan.notes,
+      }, req.auth!.sub, manager);
+
+      plan.userId = data.userId;
+      plan.cycleId = data.cycleId;
+      plan.clientId = data.clientId;
+      plan.clientType = data.clientType as typeof plan.clientType;
+      plan.plannedDate = data.plannedDate;
+      plan.weekNumber = data.weekNumber;
+      plan.order = data.order;
+      plan.notes = data.notes;
+    } else {
+      if (body.plannedDate !== undefined) plan.plannedDate = toPlannedDate(body.plannedDate);
+      if (body.order !== undefined) plan.order = Math.max(1, Number(body.order) || 1);
+      if (body.notes !== undefined) plan.notes = typeof body.notes === 'string' ? body.notes.trim() : '';
+    }
     if (body.status !== undefined) {
       if (!planStatuses.includes(body.status as PlanStatus)) {
         res.status(400).json({ message: 'Estado de visita invalido.' });
@@ -151,8 +243,6 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
       }
       plan.status = body.status as PlanStatus;
     }
-    if (body.notes !== undefined) plan.notes = typeof body.notes === 'string' ? body.notes.trim() : '';
-
     await plan.save();
     res.json(serializePlan(plan));
   } catch (error) {

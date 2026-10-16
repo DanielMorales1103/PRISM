@@ -4,7 +4,9 @@ import { LocationSchema } from './common.schema.js';
 
 const DeliveredProductSchema = new Schema(
   {
-    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+    productId: { type: Schema.Types.ObjectId, ref: 'Product' },
+    productName: { type: String, trim: true },
+    line: { type: String, trim: true },
     quantity: { type: Number, required: true, min: 0 },
   },
   { _id: false },

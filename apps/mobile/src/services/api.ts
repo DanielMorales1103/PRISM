@@ -102,6 +102,7 @@ export interface CreateProductPayload {
 }
 
 export interface SavePresentationVisitPayload {
+  doctorId?: string;
   doctorName?: string;
   doctorSpecialty?: string;
   clinic?: string;
@@ -126,7 +127,7 @@ export interface SavePresentationVisitPayload {
   }>;
   probablePurchaseDate?: string;
   competitionDetected?: string;
-  interestLevel: number;
+  interestLevel?: number;
   requiresFollowUp: boolean;
   urgentRequest: boolean;
   finalComments?: string;
@@ -143,10 +144,31 @@ export interface CreateVisitPlanPayload {
 }
 
 export interface UpdateVisitPlanPayload {
+  userId?: string;
+  cycleId?: string;
+  clientId?: string;
+  clientType?: 'doctor' | 'pharmacy';
   plannedDate?: string;
   order?: number;
   notes?: string;
   status?: VisitPlanStatus;
+}
+
+export interface ReplicateVisitPlanResponse {
+  created: VisitPlan[];
+  skipped: number;
+}
+
+export interface CompletedVisit {
+  id: string;
+  clientType: 'doctor' | 'pharmacy' | 'institution';
+  clientId: string;
+  userId: string;
+  visitedAt: string;
+  notes?: string;
+  productsDelivered: Array<{ productId?: string; quantity: number }>;
+  location?: GeoLocation;
+  syncedAt?: string;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -173,6 +195,7 @@ export const api = {
   getProducts: () => getJson<Product[]>('/api/products'),
   createProduct: (token: string, payload: CreateProductPayload) => postJson<Product>('/api/products', payload, token),
   getCatalogs: () => getJson<CatalogResponse>('/api/catalogs'),
+  createCycle: (token: string, startsAt?: string) => postJson<Cycle>('/api/cycles', startsAt ? { startsAt } : {}, token),
   getClients: () => getJson<ClientResponse>('/api/clients'),
   createDoctor: (token: string, payload: CreateDoctorPayload) => postJson<Doctor>('/api/clients/doctors', payload, token),
   createPharmacy: (token: string, payload: CreatePharmacyPayload) => postJson<Pharmacy>('/api/clients/pharmacies', payload, token),
@@ -192,9 +215,16 @@ export const api = {
     getAuthorizedJson<VisitPlan[]>(`/api/visit-plans?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`, token),
   createVisitPlan: (token: string, payload: CreateVisitPlanPayload) => postJson<VisitPlan>('/api/visit-plans', payload, token),
   updateVisitPlan: (token: string, id: string, payload: UpdateVisitPlanPayload) => patchJson<VisitPlan>(`/api/visit-plans/${id}`, payload, token),
+  replicateVisitPlan: (token: string, id: string, cycleIds: string[]) =>
+    postJson<ReplicateVisitPlanResponse>(`/api/visit-plans/${id}/replicate`, { cycleIds }, token),
+  getVisits: (token: string, filters: { from?: string; to?: string; userId?: string; clientId?: string } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
+    return getAuthorizedJson<CompletedVisit[]>(`/api/visits${query.size ? `?${query.toString()}` : ''}`, token);
+  },
   getDashboardSummary: () => getJson<DashboardSummary>('/api/dashboard/summary'),
   savePresentationVisit: (token: string, payload: SavePresentationVisitPayload) =>
-    postJson<{ ok: boolean; id: string }>('/api/presentation-visits', payload, token),
+    postJson<{ ok: boolean; id: string; visitId?: string; completedAt: string }>('/api/presentation-visits', payload, token),
 };
 
 async function getAuthorizedJson<T>(path: string, token: string): Promise<T> {

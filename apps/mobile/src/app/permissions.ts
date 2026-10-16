@@ -3,6 +3,7 @@ import { AppRole, AppScreen } from './types';
 const screenPermissions: Record<AppScreen, AppRole[]> = {
   splash: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   login: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
+  'offline-visit': ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   home: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   settings: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
   'new-visit': ['visitador', 'supervisor', 'jefe', 'admin'],
@@ -25,6 +26,7 @@ const screenPermissions: Record<AppScreen, AppRole[]> = {
   'admin-users': ['jefe', 'admin'],
   'admin-products': ['jefe', 'admin'],
   'admin-catalogs': ['jefe', 'admin'],
+  'admin-cycles': ['jefe', 'admin'],
 };
 
 export function canAccessScreen(role: AppRole, screen: AppScreen) {

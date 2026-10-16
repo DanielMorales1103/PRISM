@@ -8,9 +8,10 @@ import { colors, radius, spacing } from '../theme/theme';
 
 interface LoginScreenProps {
   onLogin: (user: SessionUser) => void;
+  onOffline: () => void;
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+export function LoginScreen({ onLogin, onOffline }: LoginScreenProps) {
   const [email, setEmail] = useState('admin@prism.com');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,6 +98,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
           <Pressable disabled={loading} onPress={submit} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, loading && styles.buttonDisabled]}>
             <Text style={styles.buttonText}>{loading ? 'Validando...' : 'Ingresar al sistema'}</Text>
+          </Pressable>
+
+          <Pressable disabled={loading} onPress={onOffline} style={styles.offlineButton}>
+            <Text style={styles.offlineButtonText}>Entrar sin internet</Text>
           </Pressable>
 
           <Text style={styles.hint}>Usa el usuario administrador creado en MongoDB.</Text>
@@ -216,6 +221,20 @@ const styles = StyleSheet.create({
   buttonText: {
     color: colors.onPrimary,
     fontSize: 16,
+    fontWeight: '900',
+  },
+  offlineButton: {
+    minHeight: 46,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  offlineButtonText: {
+    color: colors.primary,
+    fontSize: 15,
     fontWeight: '900',
   },
   hint: {

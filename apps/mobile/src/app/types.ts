@@ -3,6 +3,7 @@ export type AppRole = 'visitador' | 'supervisor' | 'facturacion' | 'jefe' | 'adm
 export type AppScreen =
   | 'splash'
   | 'login'
+  | 'offline-visit'
   | 'home'
   | 'settings'
   | 'new-visit'
@@ -24,6 +25,7 @@ export type AppScreen =
   | 'admin-users'
   | 'admin-products'
   | 'admin-catalogs'
+  | 'admin-cycles'
   | 'dashboard';
 
 export interface SessionUser {
@@ -34,6 +36,7 @@ export interface SessionUser {
 }
 
 export interface VisitDoctorSnapshot {
+  id?: string;
   name: string;
   specialty?: string;
   clinic?: string;
