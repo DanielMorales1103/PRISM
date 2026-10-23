@@ -6,6 +6,7 @@ import { DoctorModel } from '../models/doctor.model.js';
 import { PharmacyModel } from '../models/pharmacy.model.js';
 import { UserModel } from '../models/user.model.js';
 import { VisitPlanModel } from '../models/visit-plan.model.js';
+import { VisitModel } from '../models/visit.model.js';
 
 export const visitPlanRouter = Router();
 
@@ -73,6 +74,9 @@ async function buildPlanData(body: Record<string, unknown>, currentUserId: strin
   ]);
   if (!visitador) throw new Error('Visitador no encontrado o inactivo.');
   if (!cycle) throw new Error('Ciclo no encontrado.');
+  if (plannedDate < cycle.startsAt || plannedDate > cycle.endsAt) {
+    throw new Error('La fecha de la cita debe estar dentro del ciclo seleccionado.');
+  }
 
   await validateAssignment(clientType, clientId, requestedUserId);
   const elapsedDays = Math.floor((plannedDate.getTime() - cycle.startsAt.getTime()) / 86_400_000);
@@ -210,6 +214,11 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
 
     const body = req.body ?? {};
     const manager = isManager(req.auth?.role);
+
+    if (plan.status === 'completed') {
+      res.status(409).json({ message: 'Esta cita ya fue realizada y no puede modificarse.' });
+      return;
+    }
     const changesPlanContext = body.userId !== undefined || body.cycleId !== undefined || body.clientId !== undefined || body.clientType !== undefined;
 
     if (changesPlanContext) {
@@ -241,7 +250,17 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
         res.status(400).json({ message: 'Estado de visita invalido.' });
         return;
       }
+      if (body.status === 'completed') {
+        res.status(400).json({ message: 'Una cita solo se completa al guardar la visita médica vinculada.' });
+        return;
+      }
       plan.status = body.status as PlanStatus;
+    }
+
+    const linkedVisit = await VisitModel.exists({ planId: plan._id });
+    if (linkedVisit) {
+      res.status(409).json({ message: 'Esta cita ya tiene una visita registrada y no puede reactivarse.' });
+      return;
     }
     await plan.save();
     res.json(serializePlan(plan));

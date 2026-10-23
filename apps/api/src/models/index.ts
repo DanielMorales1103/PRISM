@@ -1,13 +1,17 @@
 import { CycleModel } from './cycle.model.js';
 import { DoctorModel } from './doctor.model.js';
 import { EvaluationResultModel } from './evaluation-result.model.js';
+import { ExamAttemptModel } from './exam-attempt.model.js';
+import { ExamModel } from './exam.model.js';
 import { InstitutionModel } from './institution.model.js';
 import { PharmacyModel } from './pharmacy.model.js';
 import { PresentationVisitModel } from './presentation-visit.model.js';
 import { ProductModel } from './product.model.js';
+import { SampleInventoryModel } from './sample-inventory.model.js';
 import { SpecialtyModel } from './specialty.model.js';
 import { SyncLogModel } from './sync-log.model.js';
 import { TrainingModel } from './training.model.js';
+import { TrainingCompletionModel } from './training-completion.model.js';
 import { UserModel } from './user.model.js';
 import { VisitPlanModel } from './visit-plan.model.js';
 import { VisitModel } from './visit.model.js';
@@ -15,6 +19,7 @@ import { VisitModel } from './visit.model.js';
 export const models = [
   UserModel,
   ProductModel,
+  SampleInventoryModel,
   SpecialtyModel,
   CycleModel,
   DoctorModel,
@@ -24,7 +29,10 @@ export const models = [
   VisitPlanModel,
   VisitModel,
   TrainingModel,
+  TrainingCompletionModel,
   EvaluationResultModel,
+  ExamModel,
+  ExamAttemptModel,
   SyncLogModel,
 ] as const;
 

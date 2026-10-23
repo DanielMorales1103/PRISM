@@ -51,7 +51,7 @@ export function OfflineVisitSyncModal({ user, queue, onSynced }: OfflineVisitSyn
     try {
       const token = await loadToken();
       if (!token) throw new Error('Sesion no disponible.');
-      await api.savePresentationVisit(token, { doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, doctorSpecialty: selectedDoctor.specialty, clinic: selectedDoctor.hospitalOrClinic, address: selectedDoctor.address, presentedFlows: [], visitStatus: visit.visitStatus, requestedProducts: visit.productName && visit.productQuantity > 0 ? [{ productName: visit.productName, line: visit.productLine || 'Sin línea', quantity: visit.productQuantity }] : [], interestLevel: visit.interestLevel, requiresFollowUp: visit.requiresFollowUp, urgentRequest: visit.urgentRequest, finalComments: visit.finalComments });
+      await api.savePresentationVisit(token, { doctorId: selectedDoctor.id, doctorName: selectedDoctor.name, doctorSpecialty: selectedDoctor.specialty, clinic: selectedDoctor.hospitalOrClinic, address: selectedDoctor.address, presentedFlows: [], visitStatus: visit.visitStatus, requestedProducts: visit.productName && visit.productQuantity > 0 ? [{ productName: visit.productName, line: visit.productLine || 'Sin línea', quantity: visit.productQuantity }] : [], samplesDelivered: [], interestLevel: visit.interestLevel, requiresFollowUp: visit.requiresFollowUp, urgentRequest: visit.urgentRequest, finalComments: visit.finalComments });
       await removeOfflineVisit(visit.id);
       onSynced(visit.id);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo sincronizar la visita.'); }

@@ -101,7 +101,73 @@ export interface CreateProductPayload {
   imageUrl?: string;
 }
 
+export interface SampleInventoryItem {
+  id: string;
+  userId: string;
+  productId: string;
+  productName: string;
+  line: string;
+  presentation: string;
+  quantity: number;
+}
+
+export interface TrainingItem {
+  id: string;
+  title: string;
+  description?: string;
+  resourceUrl: string;
+  active: boolean;
+  completedAt?: string;
+}
+
+export type ExamQuestionType = 'single_choice' | 'multiple_choice' | 'short_answer';
+
+export interface ExamQuestion {
+  id: string;
+  prompt: string;
+  type: ExamQuestionType;
+  options: string[];
+  correctOptionIndexes?: number[];
+  acceptedAnswers?: string[];
+}
+
+export interface ExamResultDetail {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  score: number;
+  correctCount: number;
+  passed: boolean;
+  submittedAt: string;
+  answers: Array<{ questionId: string; selectedOptionIndexes: number[]; textAnswer?: string; correct: boolean }>;
+}
+
+export interface ExamResultsResponse {
+  exam: ExamItem;
+  results: ExamResultDetail[];
+}
+
+export interface ExamItem {
+  id: string;
+  title: string;
+  description?: string;
+  passingScore: number;
+  active: boolean;
+  questions: ExamQuestion[];
+  latestAttempt?: { score: number; correctCount: number; passed: boolean; submittedAt: string };
+}
+
+export interface ExamAttemptResult {
+  score: number;
+  correctCount: number;
+  totalQuestions: number;
+  passed: boolean;
+  submittedAt: string;
+}
+
 export interface SavePresentationVisitPayload {
+  planId?: string;
   doctorId?: string;
   doctorName?: string;
   doctorSpecialty?: string;
@@ -120,6 +186,12 @@ export interface SavePresentationVisitPayload {
   finalFlowType?: 'interactive' | 'storytelling' | 'clinical';
   visitStatus: 'purchase_made' | 'follow_up_pending' | 'not_interested';
   requestedProducts: Array<{
+    productId?: string;
+    productName: string;
+    line: string;
+    quantity: number;
+  }>;
+  samplesDelivered: Array<{
     productId?: string;
     productName: string;
     line: string;
@@ -166,9 +238,23 @@ export interface CompletedVisit {
   userId: string;
   visitedAt: string;
   notes?: string;
-  productsDelivered: Array<{ productId?: string; quantity: number }>;
+  productsDelivered: Array<{ productId?: string; productName?: string; line?: string; quantity: number }>;
+  samplesDelivered: Array<{ productId?: string; productName?: string; line?: string; quantity: number }>;
   location?: GeoLocation;
   syncedAt?: string;
+}
+
+export interface VisitDetail extends CompletedVisit {
+  outcome?: {
+    visitStatus: 'purchase_made' | 'follow_up_pending' | 'not_interested';
+    interestLevel?: number;
+    requiresFollowUp: boolean;
+    urgentRequest: boolean;
+    probablePurchaseDate?: string;
+    competitionDetected?: string;
+    finalComments?: string;
+    presentedFlows: Array<{ type: string; productName?: string; completedAt?: string }>;
+  };
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -193,9 +279,23 @@ export const api = {
   deactivateUser: (token: string, id: string) => deleteJson<UserProfile>(`/api/users/${id}`, token),
   getUsers: () => getJson<UserProfile[]>('/api/users'),
   getProducts: () => getJson<Product[]>('/api/products'),
+  getSampleInventory: (token: string, userId?: string) =>
+    getAuthorizedJson<SampleInventoryItem[]>(`/api/sample-inventory${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`, token),
+  assignSamples: (token: string, payload: { userId: string; productId: string; quantity: number }) =>
+    postJson<SampleInventoryItem>('/api/sample-inventory/assign', payload, token),
+  getTrainings: (token: string) => getAuthorizedJson<TrainingItem[]>('/api/trainings', token),
+  createTraining: (token: string, payload: { title: string; description?: string; resourceUrl: string }) =>
+    postJson<TrainingItem>('/api/trainings', payload, token),
+  completeTraining: (token: string, id: string) => postJson<{ trainingId: string; completedAt: string }>(`/api/trainings/${id}/complete`, {}, token),
+  getExams: (token: string) => getAuthorizedJson<ExamItem[]>('/api/exams', token),
+  createExam: (token: string, payload: { title: string; description?: string; passingScore: number; questions: Array<{ id?: string; prompt: string; type: ExamQuestionType; options: string[]; correctOptionIndexes: number[]; acceptedAnswers: string[] }> }) => postJson<ExamItem>('/api/exams', payload, token),
+  updateExam: (token: string, id: string, payload: { title: string; description?: string; passingScore: number; questions: Array<{ id?: string; prompt: string; type: ExamQuestionType; options: string[]; correctOptionIndexes: number[]; acceptedAnswers: string[] }> }) => patchJson<ExamItem>(`/api/exams/${id}`, payload, token),
+  getExamResults: (token: string, id: string) => getAuthorizedJson<ExamResultsResponse>(`/api/exams/${id}/results`, token),
+  submitExam: (token: string, id: string, answers: Array<{ questionId: string; selectedOptionIndexes?: number[]; textAnswer?: string }>) => postJson<ExamAttemptResult>(`/api/exams/${id}/submit`, { answers }, token),
   createProduct: (token: string, payload: CreateProductPayload) => postJson<Product>('/api/products', payload, token),
   getCatalogs: () => getJson<CatalogResponse>('/api/catalogs'),
   createCycle: (token: string, startsAt?: string) => postJson<Cycle>('/api/cycles', startsAt ? { startsAt } : {}, token),
+  updateCycle: (token: string, id: string, startsAt: string) => patchJson<{ cycles: Cycle[] }>(`/api/cycles/${id}`, { startsAt }, token),
   getClients: () => getJson<ClientResponse>('/api/clients'),
   createDoctor: (token: string, payload: CreateDoctorPayload) => postJson<Doctor>('/api/clients/doctors', payload, token),
   createPharmacy: (token: string, payload: CreatePharmacyPayload) => postJson<Pharmacy>('/api/clients/pharmacies', payload, token),
@@ -222,6 +322,7 @@ export const api = {
     Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
     return getAuthorizedJson<CompletedVisit[]>(`/api/visits${query.size ? `?${query.toString()}` : ''}`, token);
   },
+  getVisit: (token: string, id: string) => getAuthorizedJson<VisitDetail>(`/api/visits/${id}`, token),
   getDashboardSummary: () => getJson<DashboardSummary>('/api/dashboard/summary'),
   savePresentationVisit: (token: string, payload: SavePresentationVisitPayload) =>
     postJson<{ ok: boolean; id: string; visitId?: string; completedAt: string }>('/api/presentation-visits', payload, token),

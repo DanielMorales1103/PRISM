@@ -1,4 +1,4 @@
-import type { Product } from '@prism/shared';
+import type { Product, VisitPlan } from '@prism/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
@@ -21,6 +21,7 @@ import { OfflineVisitScreen } from '../screens/OfflineVisitScreen';
 import { ProductSelectionScreen } from '../screens/ProductSelectionScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { StorytellingPresentationScreen } from '../screens/StorytellingPresentationScreen';
+import { TrainingScreen } from '../screens/TrainingScreen';
 import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
 import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
 import { Sidebar } from '../components/Sidebar';
@@ -35,6 +36,7 @@ import { loadOfflineVisits, OfflineVisitDraft } from '../services/offlineVisitQu
 import { Menu } from 'lucide-react-native';
 
 interface VisitDraft {
+  planId?: string;
   doctor?: VisitDoctorSnapshot;
   product?: Product;
   presentedFlows?: PresentedFlowDraft[];
@@ -59,6 +61,8 @@ export function AppShell() {
   const [savingVisit, setSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
   const [offlineVisits, setOfflineVisits] = useState<OfflineVisitDraft[]>([]);
+  const [planCandidates, setPlanCandidates] = useState<VisitPlan[]>([]);
+  const [candidateDoctor, setCandidateDoctor] = useState<VisitDoctorSnapshot | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
@@ -98,6 +102,54 @@ export function AppShell() {
       setUser(null);
       setScreen('login');
     });
+  };
+
+  const continueVisit = (doctor: VisitDoctorSnapshot, planId?: string) => {
+    setPlanCandidates([]);
+    setCandidateDoctor(null);
+    setVisitDraft({ doctor, planId });
+    setScreen('product-selection');
+  };
+
+  const handleDoctorForVisit = async (doctor: VisitDoctorSnapshot) => {
+    if (!user) {
+      continueVisit(doctor);
+      return;
+    }
+
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesion no disponible.');
+
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      const plans = await api.getVisitPlans(token, start.toISOString(), end.toISOString(), user.id);
+      const matches = plans.filter((plan) => plan.clientType === 'doctor' && plan.clientId === doctor.id && ['planned', 'rescheduled'].includes(plan.status));
+
+      if (matches.length === 0) {
+        continueVisit(doctor);
+        return;
+      }
+
+      if (matches.length === 1) {
+        Alert.alert(
+          'Cita planificada encontrada',
+          `Hay una cita pendiente hoy para ${doctor.name}. ¿Deseas vincular esta visita?`,
+          [
+            { text: 'Sin vincular', style: 'cancel', onPress: () => continueVisit(doctor) },
+            { text: 'Vincular cita', onPress: () => continueVisit(doctor, matches[0].id) },
+          ],
+        );
+        return;
+      }
+
+      setCandidateDoctor(doctor);
+      setPlanCandidates(matches);
+    } catch {
+      continueVisit(doctor);
+    }
   };
 
   const startPresentedFlow = (type: PresentationFlowType) => {
@@ -159,6 +211,7 @@ export function AppShell() {
       }
 
       const savedVisit = await api.savePresentationVisit(token, {
+        planId: visitDraft.planId,
         doctorId: visitDraft.doctor?.id,
         doctorName: visitDraft.doctor?.name,
         doctorSpecialty: visitDraft.doctor?.specialty,
@@ -171,6 +224,7 @@ export function AppShell() {
         finalFlowType: visitDraft.presentedFlows?.at(-1)?.type,
         visitStatus: visitDraft.result.visitStatus,
         requestedProducts: visitDraft.result.requestedProducts,
+        samplesDelivered: visitDraft.result.samplesDelivered,
         probablePurchaseDate: visitDraft.result.probablePurchaseDate,
         competitionDetected: visitDraft.result.competitionDetected,
         interestLevel: visitDraft.result.interestLevel,
@@ -226,16 +280,13 @@ export function AppShell() {
       case 'dashboard':
         return <KpiDashboardScreen onBack={() => setScreen('home')} />;
       case 'planner':
-        return <AgendaScreen currentUser={user} onBack={() => setScreen('home')} />;
+        return <AgendaScreen currentUser={user} onBack={() => setScreen('home')} onStartVisit={continueVisit} />;
       case 'new-visit':
         return (
           <NewVisitScreen
             currentUser={user}
             onBack={() => setScreen('home')}
-            onContinue={(doctor) => {
-              setVisitDraft((current) => ({ ...current, doctor }));
-              setScreen('product-selection');
-            }}
+            onContinue={(doctor) => { void handleDoctorForVisit(doctor); }}
           />
         );
       case 'product-selection':
@@ -344,12 +395,13 @@ export function AppShell() {
         return <SettingsScreen currentUser={user} onSessionUpdated={(nextUser, token) => { void saveSession({ user: nextUser, token }); setUser(nextUser); }} />;
       case 'visitadores':
         return <VisitadoresScreen />;
+      case 'coaching':
+        return <TrainingScreen currentUser={user} />;
       case 'map':
         return <MapScreen currentUser={user} />;
       case 'visits':
         return <VisitHistoryScreen currentUser={user} />;
       case 'marketing':
-      case 'coaching':
       case 'billing':
         return <ModuleScreen role={user.role} type={screen} />;
       case 'home':
@@ -412,6 +464,23 @@ export function AppShell() {
             {savedVisitId ? <Text style={styles.modalId}>ID: {savedVisitId}</Text> : null}
             <Pressable onPress={() => setSavedVisitId(null)} style={({ pressed }) => [styles.modalButton, pressed && styles.modalButtonPressed]}>
               <Text style={styles.modalButtonText}>Aceptar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+      <Modal transparent visible={Boolean(candidateDoctor && planCandidates.length)} animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Selecciona la cita</Text>
+            <Text style={styles.modalText}>Hay varias citas pendientes hoy para {candidateDoctor?.name}. Elige la que corresponde a esta visita.</Text>
+            <View style={styles.candidateList}>
+              {planCandidates.map((plan) => <Pressable key={plan.id} onPress={() => candidateDoctor && continueVisit(candidateDoctor, plan.id)} style={styles.candidateButton}>
+                <Text style={styles.candidateTime}>{new Date(plan.plannedDate).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit', hour12: false })}</Text>
+                <Text style={styles.candidateText}>{plan.notes?.trim() || 'Cita planificada'}</Text>
+              </Pressable>)}
+            </View>
+            <Pressable onPress={() => candidateDoctor && continueVisit(candidateDoctor)} style={({ pressed }) => [styles.secondaryModalButton, pressed && styles.modalButtonPressed]}>
+              <Text style={styles.secondaryModalButtonText}>Continuar sin vincular</Text>
             </Pressable>
           </View>
         </View>
@@ -526,6 +595,42 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  candidateList: {
+    alignSelf: 'stretch',
+    gap: 8,
+  },
+  candidateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+  },
+  candidateTime: {
+    color: colors.primary,
+    fontWeight: '900',
+  },
+  candidateText: {
+    flex: 1,
+    color: colors.text,
+    fontWeight: '800',
+  },
+  secondaryModalButton: {
+    alignSelf: 'stretch',
+    minHeight: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryModalButtonText: {
+    color: colors.primary,
     fontSize: 15,
     fontWeight: '900',
   },

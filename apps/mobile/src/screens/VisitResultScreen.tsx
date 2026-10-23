@@ -2,7 +2,8 @@ import type { Product } from '@prism/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, Minus, Plus, Search, XCircle } from 'lucide-react-native';
-import { api } from '../services/api';
+import { api, SampleInventoryItem } from '../services/api';
+import { loadToken } from '../services/session';
 import { colors, shadows, spacing } from '../theme/theme';
 
 export type VisitStatus = 'purchase_made' | 'follow_up_pending' | 'not_interested';
@@ -17,6 +18,7 @@ export interface RequestedProductDraft {
 export interface VisitResultDraft {
   visitStatus: VisitStatus;
   requestedProducts: RequestedProductDraft[];
+  samplesDelivered: RequestedProductDraft[];
   probablePurchaseDate?: string;
   competitionDetected?: string;
   interestLevel: number;
@@ -39,6 +41,8 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [visitStatus, setVisitStatus] = useState<VisitStatus | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [sampleInventory, setSampleInventory] = useState<SampleInventoryItem[]>([]);
+  const [sampleQuantities, setSampleQuantities] = useState<Record<string, number>>({});
   const [probablePurchaseDate, setProbablePurchaseDate] = useState('');
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
@@ -48,10 +52,13 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
   useEffect(() => {
     let mounted = true;
 
-    void api.getProducts().then((nextProducts) => {
-      if (mounted) {
-        setProducts(nextProducts.filter((product) => product.active));
-      }
+    void Promise.all([
+      api.getProducts(),
+      loadToken().then((token) => token ? api.getSampleInventory(token) : []),
+    ]).then(([nextProducts, inventory]) => {
+      if (!mounted) return;
+      setProducts(nextProducts.filter((product) => product.active));
+      setSampleInventory(inventory.filter((item) => item.quantity > 0));
     });
 
     return () => {
@@ -74,6 +81,23 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
     setQuantities((current) => ({
       ...current,
       [productId]: Math.max((current[productId] ?? 0) + delta, 0),
+    }));
+  };
+
+  const samplesDelivered = useMemo(
+    () => sampleInventory.map((item) => ({
+      productId: item.productId,
+      productName: item.productName,
+      line: item.line,
+      quantity: sampleQuantities[item.productId] ?? 0,
+    })).filter((sample) => sample.quantity > 0),
+    [sampleInventory, sampleQuantities],
+  );
+
+  const updateSampleQuantity = (item: SampleInventoryItem, delta: number) => {
+    setSampleQuantities((current) => ({
+      ...current,
+      [item.productId]: Math.min(Math.max((current[item.productId] ?? 0) + delta, 0), item.quantity),
     }));
   };
 
@@ -141,6 +165,27 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
                 </Pressable>
                 <Text style={styles.stepperValue}>{quantities[product.id] ?? 0}</Text>
                 <Pressable onPress={() => updateQuantity(product.id, 1)} style={[styles.stepperButton, styles.stepperButtonActive]}>
+                  <Plus size={20} color={colors.onPrimary} />
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.formLabel}>Muestras entregadas</Text>
+        <View style={styles.quantityPanel}>
+          {sampleInventory.length === 0 ? <Text style={styles.emptySamples}>No tienes muestras disponibles asignadas.</Text> : sampleInventory.map((item) => (
+            <View key={item.productId} style={styles.quantityCard}>
+              <View>
+                <Text style={styles.quantityProduct}>{item.productName}</Text>
+                <Text style={styles.quantityLine}>{item.line} · Disponibles: {item.quantity}</Text>
+              </View>
+              <View style={styles.stepper}>
+                <Pressable onPress={() => updateSampleQuantity(item, -1)} style={styles.stepperButton}>
+                  <Minus size={20} color="#9A9A9A" />
+                </Pressable>
+                <Text style={styles.stepperValue}>{sampleQuantities[item.productId] ?? 0}</Text>
+                <Pressable disabled={(sampleQuantities[item.productId] ?? 0) >= item.quantity} onPress={() => updateSampleQuantity(item, 1)} style={[styles.stepperButton, styles.stepperButtonActive, (sampleQuantities[item.productId] ?? 0) >= item.quantity && styles.stepperButtonDisabled]}>
                   <Plus size={20} color={colors.onPrimary} />
                 </Pressable>
               </View>
@@ -245,6 +290,7 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
             onContinue({
               visitStatus,
               requestedProducts,
+              samplesDelivered,
               probablePurchaseDate,
               competitionDetected,
               interestLevel,
@@ -417,10 +463,18 @@ const styles = StyleSheet.create({
   stepperButtonActive: {
     backgroundColor: colors.primary,
   },
+  stepperButtonDisabled: {
+    opacity: 0.4,
+  },
   stepperValue: {
     color: '#050505',
     fontSize: 19,
     fontWeight: '900',
+  },
+  emptySamples: {
+    color: colors.muted,
+    fontSize: 15,
+    fontWeight: '700',
   },
   fieldRow: {
     flexDirection: 'row',

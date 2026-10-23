@@ -19,7 +19,7 @@ const screenPermissions: Record<AppScreen, AppRole[]> = {
   visitadores: ['supervisor', 'jefe', 'admin'],
   planner: ['visitador', 'supervisor', 'jefe', 'admin'],
   map: ['visitador', 'supervisor', 'jefe', 'admin'],
-  visits: ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'],
+  visits: ['visitador', 'supervisor', 'jefe', 'admin'],
   marketing: ['visitador', 'supervisor', 'jefe', 'admin'],
   coaching: ['visitador', 'supervisor', 'jefe', 'admin'],
   billing: ['supervisor', 'facturacion', 'jefe', 'admin'],

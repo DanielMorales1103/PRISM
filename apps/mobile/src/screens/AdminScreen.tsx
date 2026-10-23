@@ -6,7 +6,7 @@ import { canManageUsers } from '../app/permissions';
 import { getRoleLabel } from '../app/roleLabels';
 import { AppRole, SessionUser } from '../app/types';
 import { MetricCard } from '../components/MetricCard';
-import { api, DashboardSummary } from '../services/api';
+import { api, DashboardSummary, SampleInventoryItem } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, spacing } from '../theme/theme';
 
@@ -68,6 +68,11 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
   const [rows, setRows] = useState<string[]>([...data.rows]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [sampleInventory, setSampleInventory] = useState<SampleInventoryItem[]>([]);
+  const [sampleUserId, setSampleUserId] = useState('');
+  const [sampleProductId, setSampleProductId] = useState('');
+  const [sampleQuantity, setSampleQuantity] = useState('');
+  const [assigningSamples, setAssigningSamples] = useState(false);
   const [summary, setSummary] = useState<DashboardSummary>(fallbackSummary);
   const [form, setForm] = useState({
     name: '',
@@ -96,6 +101,11 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
     () => users.filter((user) => (userListFilter === 'active' ? user.active : !user.active)),
     [userListFilter, users],
   );
+  const activeVisitadores = useMemo(() => users.filter((user) => user.active && user.role === 'visitador'), [users]);
+  const activeSampleProducts = useMemo(() => products.filter((product) => product.active), [products]);
+  const selectedSampleVisitor = activeVisitadores.find((user) => user.id === sampleUserId);
+  const selectedSampleProduct = activeSampleProducts.find((product) => product.id === sampleProductId);
+  const selectedSampleStock = sampleInventory.find((item) => item.productId === sampleProductId)?.quantity ?? 0;
 
   useEffect(() => {
     let mounted = true;
@@ -117,6 +127,8 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
         setSummary(dashboardSummary);
         setUsers(users);
         setProducts(products);
+        setSampleUserId((current) => current || users.find((user) => user.active && user.role === 'visitador')?.id || '');
+        setSampleProductId((current) => current || products.find((product) => product.active)?.id || '');
 
         if (type === 'users') {
           return;
@@ -159,6 +171,22 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
       mounted = false;
     };
   }, [data.rows, type]);
+
+  useEffect(() => {
+    if (type !== 'products' || !sampleUserId) {
+      setSampleInventory([]);
+      return;
+    }
+
+    let mounted = true;
+    void loadToken().then((token) => token ? api.getSampleInventory(token, sampleUserId) : []).then((inventory) => {
+      if (mounted) setSampleInventory(inventory);
+    }).catch(() => {
+      if (mounted) setSampleInventory([]);
+    });
+
+    return () => { mounted = false; };
+  }, [sampleUserId, type]);
 
   const metrics = useMemo(() => {
     if (type === 'dashboard') {
@@ -346,6 +374,34 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
     }
   };
 
+  const assignSamples = async () => {
+    const quantity = Number(sampleQuantity);
+    if (!sampleUserId || !sampleProductId || !Number.isInteger(quantity) || quantity <= 0) {
+      setFormMessageType('error');
+      setFormMessage('Selecciona visitador, producto y una cantidad entera mayor a cero.');
+      return;
+    }
+
+    setAssigningSamples(true);
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesion no disponible. Ingresa de nuevo.');
+      const updated = await api.assignSamples(token, { userId: sampleUserId, productId: sampleProductId, quantity });
+      setSampleInventory((current) => {
+        const existing = current.find((item) => item.productId === updated.productId);
+        return existing ? current.map((item) => item.productId === updated.productId ? updated : item) : [...current, updated];
+      });
+      setSampleQuantity('');
+      setFormMessageType('success');
+      setFormMessage(`Muestras asignadas. Saldo actual: ${updated.quantity}.`);
+    } catch (error) {
+      setFormMessageType('error');
+      setFormMessage(error instanceof Error ? error.message : 'No se pudieron asignar las muestras.');
+    } finally {
+      setAssigningSamples(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
@@ -471,6 +527,35 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
             style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, submittingProduct && styles.buttonDisabled]}
           >
             <Text style={styles.buttonText}>{submittingProduct ? 'Guardando...' : 'Agregar producto'}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {type === 'products' && canManageUsers(currentUser.role) && (
+        <View style={styles.createCard}>
+          <Text style={styles.cardTitle}>Asignar muestras a visitador</Text>
+          <Text style={styles.userListSubhead}>Las cantidades se suman al inventario individual del visitador.</Text>
+          <Text style={styles.label}>Visitador</Text>
+          <View style={styles.choiceRow}>
+            {activeVisitadores.map((visitador) => <Pressable key={visitador.id} onPress={() => setSampleUserId(visitador.id)} style={[styles.choice, sampleUserId === visitador.id && styles.choiceActive]}><Text style={[styles.choiceText, sampleUserId === visitador.id && styles.choiceTextActive]}>{visitador.name}</Text></Pressable>)}
+          </View>
+          <Text style={styles.label}>Producto</Text>
+          <View style={styles.choiceRow}>
+            {activeSampleProducts.map((product) => <Pressable key={product.id} onPress={() => setSampleProductId(product.id)} style={[styles.choice, sampleProductId === product.id && styles.choiceActive]}><Text style={[styles.choiceText, sampleProductId === product.id && styles.choiceTextActive]}>{product.name}</Text></Pressable>)}
+          </View>
+          <View style={styles.formGrid}>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Cantidad a entregar</Text>
+              <TextInput value={sampleQuantity} onChangeText={setSampleQuantity} keyboardType="number-pad" placeholder="Ej. 20" placeholderTextColor="#9CA3AF" style={styles.input} />
+            </View>
+            <View style={styles.sampleBalance}>
+              <Text style={styles.sampleBalanceLabel}>Inventario actual</Text>
+              <Text style={styles.sampleBalanceValue}>{selectedSampleStock}</Text>
+              <Text style={styles.sampleBalanceText}>{selectedSampleVisitor?.name ?? 'Selecciona visitador'} · {selectedSampleProduct?.name ?? 'Selecciona producto'}</Text>
+            </View>
+          </View>
+          <Pressable disabled={assigningSamples || !activeVisitadores.length || !activeSampleProducts.length} onPress={assignSamples} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, (assigningSamples || !activeVisitadores.length || !activeSampleProducts.length) && styles.buttonDisabled]}>
+            <Text style={styles.buttonText}>{assigningSamples ? 'Asignando...' : 'Asignar muestras'}</Text>
           </Pressable>
         </View>
       )}
@@ -721,6 +806,55 @@ function CredentialRow({ label, value, strong }: { label: string; value: string;
 }
 
 const styles = StyleSheet.create({
+  choiceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  choice: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  choiceActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  choiceText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  choiceTextActive: {
+    color: colors.primary,
+  },
+  sampleBalance: {
+    flex: 1,
+    minWidth: 240,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  sampleBalanceLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  sampleBalanceValue: {
+    color: colors.primary,
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  sampleBalanceText: {
+    color: colors.text,
+    fontSize: 12,
+    marginTop: 2,
+  },
   content: {
     padding: spacing.xl,
     gap: spacing.xl,

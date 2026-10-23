@@ -1,3 +1,5 @@
+import type { Doctor, Pharmacy, UserProfile, VisitPlan } from '@prism/shared';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   Activity,
@@ -5,7 +7,7 @@ import {
   CalendarDays,
   ChevronRight,
   CreditCard,
-  Map,
+  Map as MapIcon,
   Megaphone,
   PackagePlus,
   PlusCircle,
@@ -18,17 +20,13 @@ import { MetricCard } from '../components/MetricCard';
 import { canManageCatalogs } from '../app/permissions';
 import { AppScreen, SessionUser } from '../app/types';
 import { colors, radius, spacing } from '../theme/theme';
+import { api } from '../services/api';
+import { loadToken } from '../services/session';
 
 interface HomeScreenProps {
   user: SessionUser;
   onNavigate: (screen: AppScreen) => void;
 }
-
-const agenda = [
-  { name: 'Dr. Ricardo Salinas', meta: 'Dermatologia - Hospital Herrera Llerandi', time: '14:30', priority: 'Alta' },
-  { name: 'Dra. Beatriz Mencos', meta: 'Pediatria - Centro Medico Z.10', time: '15:45', priority: 'Media' },
-  { name: 'Farmacia San Pablo', meta: 'Tipo A - Zona 10', time: '17:00', priority: 'Alta' },
-];
 
 const formattedDate = new Intl.DateTimeFormat('es-GT', {
   weekday: 'long',
@@ -44,15 +42,56 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
   const isBilling = user.role === 'facturacion';
   const isSupervisor = user.role === 'supervisor';
   const isExecutive = user.role === 'jefe' || user.role === 'admin';
+  const [plans, setPlans] = useState<VisitPlan[]>([]);
+  const [clients, setClients] = useState<Array<Doctor | Pharmacy>>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [agendaLoading, setAgendaLoading] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+
+    void (async () => {
+      try {
+        const token = await loadToken();
+        if (!token) throw new Error('Sesion no disponible.');
+        const [planData, clientData, userData] = await Promise.all([
+          api.getVisitPlans(token, start.toISOString(), end.toISOString()),
+          api.getClients(),
+          api.getUsers(),
+        ]);
+        if (!live) return;
+        setPlans(planData.filter((plan) => plan.status === 'planned' || plan.status === 'rescheduled'));
+        setClients([...clientData.doctors, ...clientData.pharmacies]);
+        setUsers(userData);
+      } catch {
+        if (live) {
+          setPlans([]);
+          setClients([]);
+          setUsers([]);
+        }
+      } finally {
+        if (live) setAgendaLoading(false);
+      }
+    })();
+
+    return () => { live = false; };
+  }, []);
+
+  const clientsById = useMemo(() => new Map(clients.map((client) => [client.id, client])), [clients]);
+  const usersById = useMemo(() => new Map(users.map((visitador) => [visitador.id, visitador])), [users]);
   const subhead = isBilling
     ? 'Consulta clientes, ventas, cobros y documentos administrativos.'
     : isSupervisor
       ? 'Da seguimiento a planificaciones, cobertura y coaching del equipo.'
       : isExecutive
         ? 'Consulta indicadores consolidados y administra configuraciones del CRM.'
-        : 'Tienes 4 visitas prioritarias y 2 pendientes de sincronizar.';
+        : plans.length ? `Tienes ${plans.length} visita${plans.length === 1 ? '' : 's'} planificada${plans.length === 1 ? '' : 's'} para hoy.` : 'No tienes visitas planificadas para hoy.';
   const quickActions = [
-    { title: 'Mapa', subtitle: 'Optimiza tu ruta', icon: <Map size={34} color={colors.primary} />, screen: 'map' as const, visible: !isBilling },
+    { title: 'Mapa', subtitle: 'Optimiza tu ruta', icon: <MapIcon size={34} color={colors.primary} />, screen: 'map' as const, visible: !isBilling },
     { title: 'Ranking', subtitle: 'Top visitadores', icon: <Trophy size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: isSupervisor || isExecutive },
     { title: 'Historial', subtitle: 'CRM medico', icon: <Activity size={34} color={colors.text} />, screen: 'visits' as const, visible: !isBilling },
     { title: 'Reportes', subtitle: 'Analitica real', icon: <TrendingUp size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: true },
@@ -81,7 +120,7 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
       </View>
 
       <View style={styles.metricsGrid}>
-        <MetricCard label="Visitas hoy" value="12" detail="+8% vs semana" icon={<Users size={25} color={colors.primary} />} />
+        <MetricCard label="Visitas hoy" value={agendaLoading ? '...' : String(plans.length)} detail="Agenda real" icon={<Users size={25} color={colors.primary} />} />
         <MetricCard label="Meta mensual" value="82%" detail="Ciclo activo" icon={<Activity size={25} color={colors.primary} />} />
         <MetricCard label="Cobertura" value="74%" detail="Medicos A/B/C" icon={<TrendingUp size={25} color={colors.primary} />} />
       </View>
@@ -111,7 +150,7 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
 
       <View style={[styles.secondaryActions, wide && styles.secondaryActionsWide]}>
         {!isBilling && <ActionCard title="Marketing" subtitle="Reja promocional y muestras." icon={<Megaphone size={32} color={colors.primary} />} onPress={() => onNavigate('marketing')} />}
-        {!isBilling && <ActionCard title="Coaching" subtitle="Capacitaciones y evaluaciones." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
+        {!isBilling && <ActionCard title="Capacitaciones" subtitle="Guías y material de estudio." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
         {canAdminister && (
           <ActionCard
             title="Administracion"
@@ -125,24 +164,33 @@ export function HomeScreen({ user, onNavigate }: HomeScreenProps) {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Agenda de hoy</Text>
-          <Text style={styles.sectionAction}>Ver todo</Text>
+          <Pressable onPress={() => onNavigate('planner')}><Text style={styles.sectionAction}>Ver todo</Text></Pressable>
         </View>
-        {agenda.map((visit) => (
-          <View key={visit.name} style={styles.visitRow}>
+        {agendaLoading ? <Text style={styles.emptyAgenda}>Cargando agenda de hoy...</Text> : null}
+        {!agendaLoading && plans.length === 0 ? <Text style={styles.emptyAgenda}>No hay visitas planificadas para hoy.</Text> : null}
+        {plans.map((plan) => {
+          const client = clientsById.get(plan.clientId);
+          const visitador = usersById.get(plan.userId);
+          const scheduledAt = new Date(plan.plannedDate);
+          const meta = client?.type === 'doctor'
+            ? `${client.specialty || 'Médico'}${client.hospitalOrClinic ? ` - ${client.hospitalOrClinic}` : ''}`
+            : `${client?.category || 'Farmacia'} - ${client?.address || 'Sin dirección'}`;
+          return (
+          <Pressable key={plan.id} onPress={() => onNavigate('planner')} style={({ pressed }) => [styles.visitRow, pressed && styles.pressed]}>
             <View style={styles.visitIcon}>
               <Users size={19} color={colors.primary} />
             </View>
             <View style={styles.visitCopy}>
-              <Text style={styles.visitName}>{visit.name}</Text>
-              <Text style={styles.visitMeta}>{visit.meta}</Text>
+              <Text style={styles.visitName}>{client?.name ?? 'Cliente no disponible'}</Text>
+              <Text style={styles.visitMeta}>{meta}{isExecutive || isSupervisor ? ` · ${visitador?.name ?? 'Visitador'}` : ''}</Text>
             </View>
             <View style={styles.visitTimeWrap}>
-              <Text style={styles.visitTime}>{visit.time}</Text>
-              <Text style={styles.priority}>PRIORIDAD {visit.priority.toUpperCase()}</Text>
+              <Text style={styles.visitTime}>{scheduledAt.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit', hour12: false })}</Text>
+              <Text style={styles.priority}>{plan.status === 'rescheduled' ? 'REPROGRAMADA' : 'PLANIFICADA'}</Text>
             </View>
             <ChevronRight size={20} color="#B8B8B8" />
-          </View>
-        ))}
+          </Pressable>);
+        })}
       </View>
     </ScrollView>
   );
@@ -323,5 +371,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     marginTop: 2,
+  },
+  emptyAgenda: {
+    color: colors.muted,
+    paddingVertical: spacing.lg,
+    textAlign: 'center',
   },
 });

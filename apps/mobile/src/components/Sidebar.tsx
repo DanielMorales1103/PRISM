@@ -39,7 +39,7 @@ const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ siz
   { screen: 'map', label: 'Mapa Inteligente', icon: Map },
   { screen: 'visits', label: 'Historial CRM', icon: History },
   { screen: 'marketing', label: 'Marketing', icon: Megaphone },
-  { screen: 'coaching', label: 'Coaching', icon: BookOpenCheck },
+  { screen: 'coaching', label: 'Capacitaciones', icon: BookOpenCheck },
   { screen: 'billing', label: 'Ventas/Cobros', icon: CreditCard },
   { screen: 'admin-users', label: 'Usuarios', icon: Settings },
   { screen: 'admin-products', label: 'Productos', icon: PackagePlus },

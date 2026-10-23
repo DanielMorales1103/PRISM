@@ -10,6 +10,16 @@ const RequestedProductSchema = new Schema(
   { _id: false },
 );
 
+const DeliveredSampleSchema = new Schema(
+  {
+    productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+    productName: { type: String, required: true, trim: true },
+    line: { type: String, required: true, trim: true },
+    quantity: { type: Number, required: true, min: 1 },
+  },
+  { _id: false },
+);
+
 const PresentedFlowSchema = new Schema(
   {
     type: { type: String, enum: ['interactive', 'storytelling', 'clinical'], required: true },
@@ -24,6 +34,7 @@ const PresentedFlowSchema = new Schema(
 const PresentationVisitSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    planId: { type: Schema.Types.ObjectId, ref: 'VisitPlan', index: true },
     doctorId: { type: Schema.Types.ObjectId, ref: 'Doctor', index: true },
     doctorName: { type: String, trim: true },
     doctorSpecialty: { type: String, trim: true },
@@ -41,6 +52,7 @@ const PresentationVisitSchema = new Schema(
       index: true,
     },
     requestedProducts: [RequestedProductSchema],
+    samplesDelivered: [DeliveredSampleSchema],
     probablePurchaseDate: { type: String, trim: true },
     competitionDetected: { type: String, trim: true },
     interestLevel: { type: Number, min: 1, max: 5 },
