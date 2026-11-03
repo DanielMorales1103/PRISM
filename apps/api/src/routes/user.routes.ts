@@ -19,6 +19,7 @@ function serializeUser(user: any) {
     role: user.role,
     active: user.active,
     lastLoginAt: user.lastLoginAt,
+    lastContentSyncAt: user.lastContentSyncAt,
     deletedAt: user.deletedAt,
   };
 }
@@ -75,6 +76,23 @@ userRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res, next
   }
 });
 
+userRouter.post('/me/offline-sync', requireAuth, requireRoles('visitador'), async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const user = await UserModel.findOneAndUpdate(
+      { _id: req.auth?.sub, active: true },
+      { $set: { lastContentSyncAt: new Date() } },
+      { new: true },
+    );
+    if (!user) {
+      res.status(404).json({ message: 'Visitador activo no encontrado.' });
+      return;
+    }
+    res.json(serializeUser(user));
+  } catch (error) {
+    next(error);
+  }
+});
+
 userRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
   try {
     const name = String(req.body?.name ?? '').trim();
@@ -109,6 +127,7 @@ userRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, res
       role: user.role,
       active: user.active,
       lastLoginAt: user.lastLoginAt,
+      lastContentSyncAt: user.lastContentSyncAt,
       deletedAt: user.deletedAt,
     });
   } catch (error) {
@@ -154,6 +173,7 @@ userRouter.delete('/:id', requireAuth, requireRoles('admin', 'jefe'), async (req
       role: user.role,
       active: user.active,
       lastLoginAt: user.lastLoginAt,
+      lastContentSyncAt: user.lastContentSyncAt,
       deletedAt: user.deletedAt,
     });
   } catch (error) {

@@ -73,6 +73,8 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
   const [sampleProductId, setSampleProductId] = useState('');
   const [sampleQuantity, setSampleQuantity] = useState('');
   const [assigningSamples, setAssigningSamples] = useState(false);
+  const [sampleMessage, setSampleMessage] = useState('');
+  const [sampleMessageType, setSampleMessageType] = useState<'success' | 'error'>('success');
   const [summary, setSummary] = useState<DashboardSummary>(fallbackSummary);
   const [form, setForm] = useState({
     name: '',
@@ -377,12 +379,13 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
   const assignSamples = async () => {
     const quantity = Number(sampleQuantity);
     if (!sampleUserId || !sampleProductId || !Number.isInteger(quantity) || quantity <= 0) {
-      setFormMessageType('error');
-      setFormMessage('Selecciona visitador, producto y una cantidad entera mayor a cero.');
+      setSampleMessageType('error');
+      setSampleMessage('Selecciona visitador, producto y una cantidad entera mayor a cero.');
       return;
     }
 
     setAssigningSamples(true);
+    setSampleMessage('');
     try {
       const token = await loadToken();
       if (!token) throw new Error('Sesion no disponible. Ingresa de nuevo.');
@@ -392,11 +395,11 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
         return existing ? current.map((item) => item.productId === updated.productId ? updated : item) : [...current, updated];
       });
       setSampleQuantity('');
-      setFormMessageType('success');
-      setFormMessage(`Muestras asignadas. Saldo actual: ${updated.quantity}.`);
+      setSampleMessageType('success');
+      setSampleMessage(`Muestras asignadas. Saldo actual: ${updated.quantity}.`);
     } catch (error) {
-      setFormMessageType('error');
-      setFormMessage(error instanceof Error ? error.message : 'No se pudieron asignar las muestras.');
+      setSampleMessageType('error');
+      setSampleMessage(error instanceof Error ? error.message : 'No se pudieron asignar las muestras.');
     } finally {
       setAssigningSamples(false);
     }
@@ -554,6 +557,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
               <Text style={styles.sampleBalanceText}>{selectedSampleVisitor?.name ?? 'Selecciona visitador'} · {selectedSampleProduct?.name ?? 'Selecciona producto'}</Text>
             </View>
           </View>
+          {sampleMessage ? <Text style={[styles.formMessage, sampleMessageType === 'error' && styles.formMessageError]}>{sampleMessage}</Text> : null}
           <Pressable disabled={assigningSamples || !activeVisitadores.length || !activeSampleProducts.length} onPress={assignSamples} style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, (assigningSamples || !activeVisitadores.length || !activeSampleProducts.length) && styles.buttonDisabled]}>
             <Text style={styles.buttonText}>{assigningSamples ? 'Asignando...' : 'Asignar muestras'}</Text>
           </Pressable>

@@ -1,4 +1,4 @@
-import type { Cycle, Doctor, GeoLocation, Institution, Pharmacy, Product, Specialty, UserProfile, VisitPlan, VisitPlanStatus } from '@prism/shared';
+import type { Cycle, Doctor, GeoLocation, Institution, Pharmacy, PlannedProduct, Product, Specialty, UserProfile, VisitPlan, VisitPlanStatus } from '@prism/shared';
 import { AppRole } from '../app/types';
 
 function getDefaultApiUrl() {
@@ -167,6 +167,7 @@ export interface ExamAttemptResult {
 }
 
 export interface SavePresentationVisitPayload {
+  offlineSync?: boolean;
   planId?: string;
   doctorId?: string;
   doctorName?: string;
@@ -213,6 +214,7 @@ export interface CreateVisitPlanPayload {
   clientId: string;
   order?: number;
   notes?: string;
+  plannedProducts?: PlannedProduct[];
 }
 
 export interface UpdateVisitPlanPayload {
@@ -224,6 +226,7 @@ export interface UpdateVisitPlanPayload {
   order?: number;
   notes?: string;
   status?: VisitPlanStatus;
+  plannedProducts?: PlannedProduct[];
 }
 
 export interface ReplicateVisitPlanResponse {
@@ -257,6 +260,28 @@ export interface VisitDetail extends CompletedVisit {
   };
 }
 
+export interface MarketingAsset {
+  id: string;
+  productId: string;
+  type: 'cover' | 'presentation';
+  version: number;
+  fileName: string;
+  contentType: string;
+  size: number;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface MarketingAssetsResponse {
+  configured: boolean;
+  assets: MarketingAsset[];
+}
+
+export interface ProductPresentationResponse {
+  cover?: MarketingAsset & { url: string };
+  presentation: MarketingAsset & { url: string };
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`);
 
@@ -275,10 +300,16 @@ export const api = {
       password,
     }),
   updateMyProfile: (token: string, payload: UpdateMyProfilePayload) => patchJson<LoginResponse>('/api/users/me', payload, token),
+  recordOfflineSync: (token: string) => postJson<UserProfile>('/api/users/me/offline-sync', {}, token),
   createUser: (token: string, payload: CreateUserPayload) => postJson<UserProfile>('/api/users', payload, token),
   deactivateUser: (token: string, id: string) => deleteJson<UserProfile>(`/api/users/${id}`, token),
   getUsers: () => getJson<UserProfile[]>('/api/users'),
   getProducts: () => getJson<Product[]>('/api/products'),
+  getMarketingAssets: (token: string) => getAuthorizedJson<MarketingAssetsResponse>('/api/marketing', token),
+  getProductPresentation: (token: string, productId: string) =>
+    getAuthorizedJson<ProductPresentationResponse>(`/api/marketing/products/${productId}/presentation`, token),
+  uploadMarketingAsset: (token: string, productId: string, payload: { type: 'cover' | 'presentation'; fileName: string; contentType: string; base64: string }) =>
+    postJson<MarketingAsset>(`/api/marketing/${productId}/assets`, payload, token),
   getSampleInventory: (token: string, userId?: string) =>
     getAuthorizedJson<SampleInventoryItem[]>(`/api/sample-inventory${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`, token),
   assignSamples: (token: string, payload: { userId: string; productId: string; quantity: number }) =>
@@ -294,8 +325,9 @@ export const api = {
   submitExam: (token: string, id: string, answers: Array<{ questionId: string; selectedOptionIndexes?: number[]; textAnswer?: string }>) => postJson<ExamAttemptResult>(`/api/exams/${id}/submit`, { answers }, token),
   createProduct: (token: string, payload: CreateProductPayload) => postJson<Product>('/api/products', payload, token),
   getCatalogs: () => getJson<CatalogResponse>('/api/catalogs'),
-  createCycle: (token: string, startsAt?: string) => postJson<Cycle>('/api/cycles', startsAt ? { startsAt } : {}, token),
-  updateCycle: (token: string, id: string, startsAt: string) => patchJson<{ cycles: Cycle[] }>(`/api/cycles/${id}`, { startsAt }, token),
+  createCycle: (token: string, durationWeeks = 5, startsAt?: string) => postJson<Cycle>('/api/cycles', { durationWeeks, ...(startsAt ? { startsAt } : {}) }, token),
+  updateCycle: (token: string, id: string, startsAt: string, durationWeeks: number) => patchJson<{ cycles: Cycle[] }>(`/api/cycles/${id}`, { startsAt, durationWeeks }, token),
+  deleteCycle: (token: string, id: string) => deleteJson<{ deletedId: string }>(`/api/cycles/${id}`, token),
   getClients: () => getJson<ClientResponse>('/api/clients'),
   createDoctor: (token: string, payload: CreateDoctorPayload) => postJson<Doctor>('/api/clients/doctors', payload, token),
   createPharmacy: (token: string, payload: CreatePharmacyPayload) => postJson<Pharmacy>('/api/clients/pharmacies', payload, token),

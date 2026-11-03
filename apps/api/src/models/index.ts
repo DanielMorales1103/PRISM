@@ -4,6 +4,7 @@ import { EvaluationResultModel } from './evaluation-result.model.js';
 import { ExamAttemptModel } from './exam-attempt.model.js';
 import { ExamModel } from './exam.model.js';
 import { InstitutionModel } from './institution.model.js';
+import { MarketingAssetModel } from './marketing-asset.model.js';
 import { PharmacyModel } from './pharmacy.model.js';
 import { PresentationVisitModel } from './presentation-visit.model.js';
 import { ProductModel } from './product.model.js';
@@ -25,6 +26,7 @@ export const models = [
   DoctorModel,
   PharmacyModel,
   InstitutionModel,
+  MarketingAssetModel,
   PresentationVisitModel,
   VisitPlanModel,
   VisitModel,

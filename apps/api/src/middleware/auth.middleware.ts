@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { userRoles } from '../constants/domain.js';
+import { UserModel } from '../models/user.model.js';
 
 type UserRole = (typeof userRoles)[number];
 
@@ -15,7 +16,7 @@ export interface AuthenticatedRequest extends Request {
   auth?: TokenPayload;
 }
 
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const header = req.header('authorization');
   const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
 
@@ -25,10 +26,26 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   }
 
   try {
-    req.auth = jwt.verify(token, env.jwtSecret) as TokenPayload;
+    const tokenPayload = jwt.verify(token, env.jwtSecret) as TokenPayload;
+    const user = await UserModel.findOne({ _id: tokenPayload.sub, active: true }).lean();
+    if (!user) {
+      res.status(401).json({ message: 'Invalid token' });
+      return;
+    }
+
+    req.auth = {
+      sub: user._id.toString(),
+      email: user.email,
+      role: user.role as UserRole,
+    };
     next();
-  } catch {
-    res.status(401).json({ message: 'Invalid token' });
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError) {
+      res.status(401).json({ message: 'Invalid token' });
+      return;
+    }
+
+    next(error);
   }
 }
 

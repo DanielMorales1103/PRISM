@@ -1,5 +1,5 @@
 import type { Cycle } from '@prism/shared';
-import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock3, Pencil, X } from 'lucide-react-native';
+import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock3, Minus, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../services/api';
@@ -17,13 +17,29 @@ export function CyclesScreen() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createDurationWeeks, setCreateDurationWeeks] = useState(5);
   const [editingCycleId, setEditingCycleId] = useState<string | null>(null);
   const [cycleStart, setCycleStart] = useState('');
+  const [editDurationWeeks, setEditDurationWeeks] = useState(5);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [savingEdit, setSavingEdit] = useState(false);
+  const [pendingDeleteCycleId, setPendingDeleteCycleId] = useState<string | null>(null);
+  const [deletingCycle, setDeletingCycle] = useState(false);
+  const [editMessage, setEditMessage] = useState('');
   const [message, setMessage] = useState('');
   const orderedCycles = useMemo(() => [...cycles].sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime()), [cycles]);
+  const lastCycleId = orderedCycles.at(-1)?.id;
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !calendarOpen) return;
+    const closeCalendar = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest('#cycle-date-picker')) setCalendarOpen(false);
+    };
+    document.addEventListener('mousedown', closeCalendar);
+    return () => document.removeEventListener('mousedown', closeCalendar);
+  }, [calendarOpen]);
 
   useEffect(() => {
     let live = true;
@@ -40,7 +56,7 @@ export function CyclesScreen() {
     try {
       const token = await loadToken();
       if (!token) throw new Error('Sesion no disponible.');
-      const cycle = await api.createCycle(token);
+      const cycle = await api.createCycle(token, createDurationWeeks);
       setCycles((current) => [...current, cycle]);
       setMessage(`${cycle.name} creado: ${formatDate(cycle.startsAt)} al ${formatDate(cycle.endsAt)}.`);
     } catch (error) {
@@ -53,37 +69,60 @@ export function CyclesScreen() {
   const editCycle = (cycle: Cycle) => {
     setEditingCycleId(cycle.id);
     setCycleStart(cycle.startsAt.slice(0, 10));
+    setEditDurationWeeks(cycle.durationWeeks ?? 5);
     setCalendarMonth(new Date(`${cycle.startsAt.slice(0, 10)}T12:00:00`));
     setCalendarOpen(false);
+    setEditMessage('');
     setMessage('');
   };
 
   const saveCycle = async () => {
     if (!editingCycleId) return;
     setSavingEdit(true);
+    setEditMessage('');
     setMessage('');
     try {
       const token = await loadToken();
       if (!token) throw new Error('Sesión no disponible.');
-      const response = await api.updateCycle(token, editingCycleId, cycleStart);
+      const response = await api.updateCycle(token, editingCycleId, cycleStart, editDurationWeeks);
       const updated = new Map(response.cycles.map((cycle) => [cycle.id, cycle]));
       setCycles((current) => current.map((cycle) => updated.get(cycle.id) ?? cycle));
       setEditingCycleId(null);
       setMessage('Ciclo actualizado. Los ciclos posteriores y sus citas pendientes se reacomodaron automáticamente.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudo actualizar el ciclo.');
+      const detail = error instanceof Error ? error.message : 'No se pudo actualizar el ciclo.';
+      setEditMessage(detail === 'Insufficient permissions' ? 'Tu sesión no tiene permisos de admin o jefe para editar ciclos. Cierra sesión e ingresa con la cuenta correcta.' : detail);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const deleteCycle = async () => {
+    if (!pendingDeleteCycleId) return;
+    setDeletingCycle(true);
+    setMessage('');
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesión no disponible.');
+      await api.deleteCycle(token, pendingDeleteCycleId);
+      setCycles((current) => current.filter((cycle) => cycle.id !== pendingDeleteCycleId));
+      setPendingDeleteCycleId(null);
+      setMessage('Último ciclo eliminado.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'No se pudo eliminar el ciclo.');
+    } finally {
+      setDeletingCycle(false);
     }
   };
 
   return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <View style={styles.header}>
       <Text style={styles.title}>Ciclos de trabajo</Text>
-      <Text style={styles.subtitle}>Cada ciclo dura cinco semanas, inicia lunes y continúa inmediatamente después del anterior.</Text>
+      <Text style={styles.subtitle}>Cada ciclo inicia lunes, puede durar las semanas que definas y continúa inmediatamente después del anterior.</Text>
     </View>
     <View style={styles.createCard}>
       <View style={styles.createCopy}><Text style={styles.cardTitle}>Siguiente ciclo</Text><Text style={styles.cardText}>Se calculará automáticamente a partir del último ciclo registrado.</Text></View>
+      <View style={styles.durationControl}><Text style={styles.durationLabel}>Duración</Text><View style={styles.weekStepper}><Pressable accessibilityLabel="Reducir semanas" disabled={createDurationWeeks <= 1} onPress={() => setCreateDurationWeeks((weeks) => Math.max(1, weeks - 1))} style={[styles.stepperButton, createDurationWeeks <= 1 && styles.disabled]}><Minus size={16} color={colors.text} /></Pressable><Text style={styles.weekStepperValue}>{createDurationWeeks} {createDurationWeeks === 1 ? 'semana' : 'semanas'}</Text><Pressable accessibilityLabel="Aumentar semanas" disabled={createDurationWeeks >= 52} onPress={() => setCreateDurationWeeks((weeks) => Math.min(52, weeks + 1))} style={[styles.stepperButton, createDurationWeeks >= 52 && styles.disabled]}><Plus size={16} color={colors.text} /></Pressable></View></View>
       <Pressable disabled={creating} onPress={createNextCycle} style={[styles.button, creating && styles.disabled]}>
         <CalendarPlus size={18} color={colors.onPrimary} /><Text style={styles.buttonText}>{creating ? 'Creando...' : 'Crear siguiente ciclo'}</Text>
       </Pressable>
@@ -91,14 +130,16 @@ export function CyclesScreen() {
     {message ? <Text style={styles.message}>{message}</Text> : null}
     <View style={styles.listCard}>
       <View style={styles.listHeader}><View><Text style={styles.cardTitle}>Ciclos registrados</Text><Text style={styles.cardText}>{orderedCycles.length} ciclos generales disponibles para planificación.</Text></View></View>
-      {loading ? <Text style={styles.cardText}>Cargando ciclos...</Text> : orderedCycles.map((cycle) => <View key={cycle.id} style={styles.cycleBlock}>
+      {loading ? <Text style={styles.cardText}>Cargando ciclos...</Text> : orderedCycles.map((cycle) => <View key={cycle.id} style={[styles.cycleBlock, editingCycleId === cycle.id && styles.cycleBlockEditing]}>
         <View style={styles.cycleRow}>
           <View style={styles.icon}><Clock3 size={19} color={colors.primary} /></View>
           <View style={styles.cycleInfo}><Text style={styles.cycleName}>{cycle.name}</Text><Text style={styles.cycleDate}>{formatDate(cycle.startsAt)} - {formatDate(cycle.endsAt)}</Text></View>
-          <Text style={[styles.badge, cycle.active && styles.badgeActive]}>{cycle.active ? 'Activo' : '5 semanas'}</Text>
+          <Text style={[styles.badge, cycle.active && styles.badgeActive]}>{cycle.active ? `Activo · ${cycle.durationWeeks} sem.` : `${cycle.durationWeeks} ${cycle.durationWeeks === 1 ? 'semana' : 'semanas'}`}</Text>
           <Pressable accessibilityLabel={`Editar ${cycle.name}`} onPress={() => editCycle(cycle)} style={styles.editButton}><Pencil size={17} color={colors.primary} /></Pressable>
+          {cycle.id === lastCycleId ? <Pressable accessibilityLabel={`Eliminar ${cycle.name}`} onPress={() => { setEditingCycleId(null); setCalendarOpen(false); setPendingDeleteCycleId(cycle.id); }} style={styles.deleteButton}><Trash2 size={17} color={colors.primaryDark} /></Pressable> : null}
         </View>
-        {editingCycleId === cycle.id ? <View style={styles.editPanel}><View style={styles.editField}><Text style={styles.editLabel}>Inicio del ciclo, lunes</Text><Pressable onPress={() => setCalendarOpen((open) => !open)} style={styles.dateTrigger}><CalendarDays size={18} color={colors.primary} /><Text style={styles.dateTriggerText}>{cycleStart ? formatDate(`${cycleStart}T12:00:00`) : 'Selecciona una fecha'}</Text></Pressable>{calendarOpen ? <View style={styles.datePicker}><View style={styles.datePickerHeader}><Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} style={styles.pickerNav}><ChevronLeft size={17} color={colors.text} /></Pressable><Text style={styles.pickerTitle}>{months[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}</Text><Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} style={styles.pickerNav}><ChevronRight size={17} color={colors.text} /></Pressable></View><View style={styles.pickerWeek}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day, index) => <Text key={`${day}-${index}`} style={styles.pickerWeekDay}>{day}</Text>)}</View>{calendarWeeks(calendarMonth).map((week, index) => <View key={index} style={styles.pickerRow}>{week.map((day, dayIndex) => { const value = day ? dateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day)) : ''; const selected = value === cycleStart; const monday = day ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day).getDay() === 1 : false; return <Pressable key={dayIndex} disabled={!day} onPress={() => { if (monday) { setCycleStart(value); setCalendarOpen(false); } }} style={[styles.pickerDay, selected && styles.pickerDaySelected, Boolean(day) && !monday && styles.pickerDayDisabled]}><Text style={[styles.pickerDayText, selected && styles.pickerDayTextSelected, Boolean(day) && !monday && styles.pickerDayTextDisabled]}>{day ?? ''}</Text></Pressable>; })}</View>)}</View> : null}</View><View style={styles.editActions}><Pressable disabled={savingEdit} onPress={() => void saveCycle()} style={[styles.saveButton, savingEdit && styles.disabled]}><Text style={styles.buttonText}>{savingEdit ? 'Guardando...' : 'Guardar'}</Text></Pressable><Pressable onPress={() => { setEditingCycleId(null); setCalendarOpen(false); }} style={styles.cancelButton}><X size={16} color={colors.primary} /><Text style={styles.cancelText}>Cancelar</Text></Pressable></View><Text style={styles.editHint}>Solo se pueden seleccionar lunes. Se actualizarán este ciclo y los siguientes.</Text></View> : null}
+        {editingCycleId === cycle.id ? <View style={styles.editPanel}><View nativeID="cycle-date-picker" style={styles.editField}><Text style={styles.editLabel}>Inicio del ciclo, lunes</Text><Pressable onPress={() => setCalendarOpen((open) => !open)} style={styles.dateTrigger}><CalendarDays size={18} color={colors.primary} /><Text style={styles.dateTriggerText}>{cycleStart ? formatDate(`${cycleStart}T12:00:00`) : 'Selecciona una fecha'}</Text></Pressable>{calendarOpen ? <View style={styles.datePicker}><View style={styles.datePickerHeader}><Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} style={styles.pickerNav}><ChevronLeft size={17} color={colors.text} /></Pressable><Text style={styles.pickerTitle}>{months[calendarMonth.getMonth()]} {calendarMonth.getFullYear()}</Text><Pressable onPress={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} style={styles.pickerNav}><ChevronRight size={17} color={colors.text} /></Pressable></View><View style={styles.pickerWeek}>{['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day, index) => <Text key={`${day}-${index}`} style={styles.pickerWeekDay}>{day}</Text>)}</View>{calendarWeeks(calendarMonth).map((week, index) => <View key={index} style={styles.pickerRow}>{week.map((day, dayIndex) => { const value = day ? dateKey(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day)) : ''; const selected = value === cycleStart; const monday = day ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day).getDay() === 1 : false; return <Pressable key={dayIndex} disabled={!day} onPress={() => { if (monday) { setCycleStart(value); setCalendarOpen(false); } }} style={[styles.pickerDay, selected && styles.pickerDaySelected, Boolean(day) && !monday && styles.pickerDayDisabled]}><Text style={[styles.pickerDayText, selected && styles.pickerDayTextSelected, Boolean(day) && !monday && styles.pickerDayTextDisabled]}>{day ?? ''}</Text></Pressable>; })}</View>)}</View> : null}</View><View style={styles.editDuration}><Text style={styles.editLabel}>Duración del ciclo</Text><View style={styles.weekStepper}><Pressable accessibilityLabel="Reducir semanas" disabled={editDurationWeeks <= 1} onPress={() => setEditDurationWeeks((weeks) => Math.max(1, weeks - 1))} style={[styles.stepperButton, editDurationWeeks <= 1 && styles.disabled]}><Minus size={16} color={colors.text} /></Pressable><Text style={styles.weekStepperValue}>{editDurationWeeks} {editDurationWeeks === 1 ? 'semana' : 'semanas'}</Text><Pressable accessibilityLabel="Aumentar semanas" disabled={editDurationWeeks >= 52} onPress={() => setEditDurationWeeks((weeks) => Math.min(52, weeks + 1))} style={[styles.stepperButton, editDurationWeeks >= 52 && styles.disabled]}><Plus size={16} color={colors.text} /></Pressable></View></View>{editMessage ? <Text style={styles.editMessage}>{editMessage}</Text> : null}<View style={styles.editActions}><Pressable disabled={savingEdit} onPress={() => void saveCycle()} style={[styles.saveButton, savingEdit && styles.disabled]}><Text style={styles.buttonText}>{savingEdit ? 'Guardando...' : 'Guardar'}</Text></Pressable><Pressable onPress={() => { setEditingCycleId(null); setCalendarOpen(false); setEditMessage(''); }} style={styles.cancelButton}><X size={16} color={colors.primary} /><Text style={styles.cancelText}>Cancelar</Text></Pressable></View><Text style={styles.editHint}>Solo se pueden seleccionar lunes. Se actualizarán este ciclo y los siguientes.</Text></View> : null}
+        {pendingDeleteCycleId === cycle.id ? <View style={styles.deletePanel}><Text style={styles.deleteText}>¿Eliminar {cycle.name}? Esta acción no se puede deshacer.</Text><View style={styles.editActions}><Pressable disabled={deletingCycle} onPress={() => void deleteCycle()} style={[styles.deleteConfirmButton, deletingCycle && styles.disabled]}><Text style={styles.buttonText}>{deletingCycle ? 'Eliminando...' : 'Eliminar ciclo'}</Text></Pressable><Pressable disabled={deletingCycle} onPress={() => setPendingDeleteCycleId(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable></View></View> : null}
       </View>)}
     </View>
   </ScrollView>;
@@ -109,10 +150,15 @@ const styles = StyleSheet.create({
   header: { gap: spacing.xs },
   title: { color: colors.text, fontSize: 28, fontWeight: '800' },
   subtitle: { color: colors.muted, fontSize: 16, maxWidth: 720 },
-  createCard: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.lg, ...shadows.card },
+  createCard: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing.lg, ...shadows.card },
   createCopy: { flex: 1, gap: spacing.xs },
   cardTitle: { color: colors.text, fontWeight: '800', fontSize: 18 },
   cardText: { color: colors.muted, fontSize: 14 },
+  durationControl: { gap: 5 },
+  durationLabel: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  weekStepper: { height: 42, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, overflow: 'hidden' },
+  stepperButton: { width: 38, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC' },
+  weekStepperValue: { minWidth: 92, color: colors.text, textAlign: 'center', fontSize: 13, fontWeight: '800' },
   button: { minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.md, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   buttonText: { color: colors.onPrimary, fontWeight: '800', fontSize: 15 },
   disabled: { opacity: 0.6 },
@@ -120,7 +166,8 @@ const styles = StyleSheet.create({
   listCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, ...shadows.card },
   listHeader: { paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   cycleRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
-  cycleBlock: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  cycleBlock: { position: 'relative', zIndex: 1, borderBottomWidth: 1, borderBottomColor: colors.border },
+  cycleBlockEditing: { zIndex: 50, elevation: 50 },
   icon: { width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   cycleInfo: { flex: 1, gap: 2 },
   cycleName: { color: colors.text, fontWeight: '800', fontSize: 16 },
@@ -128,8 +175,10 @@ const styles = StyleSheet.create({
   badge: { color: colors.muted, backgroundColor: '#F3F4F6', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, fontWeight: '700', fontSize: 12 },
   badgeActive: { color: colors.success, backgroundColor: '#E6F7F2' },
   editButton: { width: 38, height: 38, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  deleteButton: { width: 38, height: 38, borderRadius: radius.md, borderWidth: 1, borderColor: '#FECACA', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF7F7' },
   editPanel: { position: 'relative', zIndex: 20, backgroundColor: '#FFF7F3', borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, gap: spacing.sm },
   editField: { position: 'relative', zIndex: 30, gap: 5, maxWidth: 300 },
+  editDuration: { gap: 5 },
   editLabel: { color: colors.text, fontSize: 13, fontWeight: '800' },
   dateTrigger: { minHeight: 46, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   dateTriggerText: { color: colors.text, fontWeight: '800' },
@@ -151,4 +200,8 @@ const styles = StyleSheet.create({
   cancelButton: { minHeight: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.primary, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   cancelText: { color: colors.primary, fontWeight: '800' },
   editHint: { color: colors.muted, fontSize: 12 },
+  editMessage: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
+  deletePanel: { backgroundColor: '#FFF7F7', borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, gap: spacing.sm },
+  deleteText: { color: colors.text, fontWeight: '800' },
+  deleteConfirmButton: { minHeight: 40, borderRadius: radius.md, backgroundColor: colors.primaryDark, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
 });

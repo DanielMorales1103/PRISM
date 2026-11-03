@@ -1,43 +1,148 @@
-import { useState } from 'react';
-import { AlertCircle, ArrowLeft, Save } from 'lucide-react-native';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { Product } from '@prism/shared';
+import { createElement, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ArrowLeft, Play, Presentation } from 'lucide-react-native';
+import { WebView } from 'react-native-webview';
+import { SessionUser, VisitDoctorSnapshot } from '../app/types';
+import { NewVisitScreen } from './NewVisitScreen';
+import { ProductSelectionScreen } from './ProductSelectionScreen';
+import { VisitResultDraft, VisitResultScreen } from './VisitResultScreen';
+import { VisitCommentsScreen } from './VisitCommentsScreen';
 import { enqueueOfflineVisit } from '../services/offlineVisitQueue';
-import { colors, radius, shadows, spacing } from '../theme/theme';
+import { loadOfflineCatalog, OfflineCatalogSnapshot } from '../services/offlineCatalog';
+import { colors, shadows, spacing } from '../theme/theme';
 
-interface OfflineVisitScreenProps { onBack: () => void; onSaved: () => void; }
-type VisitStatus = 'purchase_made' | 'follow_up_pending' | 'not_interested';
-const statuses: Array<{ id: VisitStatus; label: string }> = [{ id: 'purchase_made', label: 'Compra realizada' }, { id: 'follow_up_pending', label: 'Seguimiento' }, { id: 'not_interested', label: 'Sin interés' }];
-
-export function OfflineVisitScreen({ onBack, onSaved }: OfflineVisitScreenProps) {
-  const [doctorName, setDoctorName] = useState('');
-  const [specialty, setSpecialty] = useState('');
-  const [clinic, setClinic] = useState('');
-  const [address, setAddress] = useState('');
-  const [comments, setComments] = useState('');
-  const [productName, setProductName] = useState('');
-  const [productLine, setProductLine] = useState('');
-  const [productQuantity, setProductQuantity] = useState('0');
-  const [interestLevel, setInterestLevel] = useState(3);
-  const [requiresFollowUp, setRequiresFollowUp] = useState(false);
-  const [urgentRequest, setUrgentRequest] = useState(false);
-  const [status, setStatus] = useState<VisitStatus>('follow_up_pending');
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    if (!doctorName.trim()) return;
-    setSaving(true);
-    await enqueueOfflineVisit({ doctorName: doctorName.trim(), doctorSpecialty: specialty.trim(), clinic: clinic.trim(), address: address.trim(), finalComments: comments.trim(), productName: productName.trim(), productLine: productLine.trim(), productQuantity: Math.max(0, Number(productQuantity) || 0), interestLevel, visitStatus: status, requiresFollowUp: requiresFollowUp || status === 'follow_up_pending', urgentRequest });
-    setSaving(false);
-    onSaved();
-  };
-
-  return <View style={styles.screen}><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    <View style={styles.header}><Pressable onPress={onBack} style={styles.back}><ArrowLeft size={22} color={colors.text} /></Pressable><View><Text style={styles.title}>Visita sin conexión</Text><Text style={styles.subtitle}>Se guardará en esta tablet y se sincronizará al iniciar sesión con internet.</Text></View></View>
-    <View style={styles.notice}><AlertCircle size={20} color={colors.warning} /><Text style={styles.noticeText}>Modo offline: solo puedes registrar visitas manuales.</Text></View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Información del médico</Text><Text style={styles.label}>Nombre del médico *</Text><TextInput value={doctorName} onChangeText={setDoctorName} placeholder="Nombre completo" placeholderTextColor="#9CA3AF" style={styles.input} /><Text style={styles.label}>Especialidad</Text><TextInput value={specialty} onChangeText={setSpecialty} placeholder="Opcional" placeholderTextColor="#9CA3AF" style={styles.input} /><Text style={styles.label}>Clínica / hospital</Text><TextInput value={clinic} onChangeText={setClinic} placeholder="Opcional" placeholderTextColor="#9CA3AF" style={styles.input} /><Text style={styles.label}>Dirección</Text><TextInput value={address} onChangeText={setAddress} placeholder="Opcional" placeholderTextColor="#9CA3AF" style={styles.input} /></View>
-    <View style={styles.card}><Text style={styles.cardTitle}>Producto y resultado</Text><Text style={styles.label}>Producto presentado / solicitado</Text><TextInput value={productName} onChangeText={setProductName} placeholder="Nombre del producto" placeholderTextColor="#9CA3AF" style={styles.input} /><Text style={styles.label}>Línea</Text><TextInput value={productLine} onChangeText={setProductLine} placeholder="Opcional" placeholderTextColor="#9CA3AF" style={styles.input} /><Text style={styles.label}>Cantidad</Text><TextInput value={productQuantity} onChangeText={setProductQuantity} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" style={styles.input} /><View style={styles.statuses}>{statuses.map((item) => <Pressable key={item.id} onPress={() => setStatus(item.id)} style={[styles.status, status === item.id && styles.statusActive]}><Text style={[styles.statusText, status === item.id && styles.statusTextActive]}>{item.label}</Text></Pressable>)}</View><Text style={styles.label}>Nivel de interés</Text><View style={styles.statuses}>{[1, 2, 3, 4, 5].map((level) => <Pressable key={level} onPress={() => setInterestLevel(level)} style={[styles.status, interestLevel === level && styles.statusActive]}><Text style={[styles.statusText, interestLevel === level && styles.statusTextActive]}>{level}</Text></Pressable>)}</View><View style={styles.statuses}><Pressable onPress={() => setRequiresFollowUp((value) => !value)} style={[styles.status, requiresFollowUp && styles.statusActive]}><Text style={[styles.statusText, requiresFollowUp && styles.statusTextActive]}>Requiere seguimiento</Text></Pressable><Pressable onPress={() => setUrgentRequest((value) => !value)} style={[styles.status, urgentRequest && styles.statusActive]}><Text style={[styles.statusText, urgentRequest && styles.statusTextActive]}>Solicitud urgente</Text></Pressable></View><Text style={styles.label}>Observaciones</Text><TextInput value={comments} onChangeText={setComments} multiline placeholder="Qué ocurrió durante la visita" placeholderTextColor="#9CA3AF" style={[styles.input, styles.comments]} /></View>
-    <Pressable disabled={!doctorName.trim() || saving} onPress={save} style={[styles.save, (!doctorName.trim() || saving) && styles.disabled]}><Save size={19} color={colors.onPrimary} /><Text style={styles.saveText}>{saving ? 'Guardando...' : 'Guardar visita en tablet'}</Text></Pressable>
-  </ScrollView></View>;
+interface OfflineVisitScreenProps {
+  currentUser?: SessionUser | null;
+  onBack: () => void;
+  onSaved: () => void;
 }
 
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: colors.background }, content: { padding: spacing.xl, gap: spacing.lg }, header: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' }, back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md }, title: { color: colors.text, fontSize: 27, fontWeight: '900' }, subtitle: { color: colors.muted, marginTop: 2 }, notice: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', backgroundColor: '#FEF3C7', borderRadius: radius.md, padding: spacing.md }, noticeText: { color: colors.warning, fontWeight: '800' }, card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, ...shadows.card }, cardTitle: { color: colors.text, fontSize: 18, fontWeight: '900', marginBottom: spacing.sm }, label: { color: colors.text, fontWeight: '800', fontSize: 13, marginTop: spacing.xs }, input: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, color: colors.text }, comments: { minHeight: 110, paddingVertical: spacing.sm, textAlignVertical: 'top' }, statuses: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }, status: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm }, statusActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft }, statusText: { color: colors.muted, fontWeight: '800', fontSize: 13 }, statusTextActive: { color: colors.primary }, save: { minHeight: 54, backgroundColor: colors.primary, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.sm }, saveText: { color: colors.onPrimary, fontWeight: '900', fontSize: 16 }, disabled: { opacity: 0.55 } });
+type OfflineStage = 'doctor' | 'products' | 'presentation' | 'result' | 'comments';
+const offlineUser: SessionUser = { id: 'offline', name: 'Visitador', email: '', role: 'visitador' };
+
+export function OfflineVisitScreen({ currentUser, onBack, onSaved }: OfflineVisitScreenProps) {
+  const [catalog, setCatalog] = useState<OfflineCatalogSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [stage, setStage] = useState<OfflineStage>('doctor');
+  const [doctor, setDoctor] = useState<VisitDoctorSnapshot>();
+  const [queue, setQueue] = useState<Product[]>([]);
+  const [presentationIndex, setPresentationIndex] = useState(0);
+  const [presentationStarted, setPresentationStarted] = useState(false);
+  const [result, setResult] = useState<VisitResultDraft>();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void loadOfflineCatalog().then((snapshot) => {
+      setCatalog(snapshot);
+      setLoading(false);
+    });
+  }, []);
+
+  const productImageUris = useMemo(
+    () => Object.fromEntries(Object.entries(catalog?.presentations ?? {}).map(([productId, presentation]) => [productId, presentation.coverUri])),
+    [catalog],
+  );
+
+  if (loading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.loadingText}>Cargando contenido de la tablet...</Text></View>;
+  }
+
+  if (!catalog) {
+    return <View style={styles.center}><Presentation size={48} color={colors.primary} /><Text style={styles.errorTitle}>No hay contenido sincronizado</Text><Text style={styles.errorText}>Conéctate y usa Actualizar tablet antes de registrar una visita sin conexión.</Text><Pressable onPress={onBack} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Volver</Text></Pressable></View>;
+  }
+
+  if (stage === 'doctor') {
+    return <NewVisitScreen currentUser={currentUser ?? offlineUser} offline onBack={onBack} onContinue={(nextDoctor) => {
+      if (!nextDoctor.name.trim()) return;
+      setDoctor(nextDoctor);
+      setStage('products');
+    }} />;
+  }
+
+  if (stage === 'products') {
+    return <ProductSelectionScreen productsOverride={catalog.products} productImageUris={productImageUris} initialProductIds={queue.map((product) => product.id)} onBack={() => setStage('doctor')} onStartPrepared={(products) => {
+      setQueue(products);
+      setPresentationIndex(0);
+      setPresentationStarted(false);
+      setStage('presentation');
+    }} />;
+  }
+
+  if (stage === 'presentation') {
+    const product = queue[presentationIndex];
+    const presentation = product ? catalog.presentations[product.id] : undefined;
+    const hasNext = presentationIndex + 1 < queue.length;
+    const finish = () => {
+      if (hasNext) {
+        setPresentationIndex((current) => current + 1);
+        setPresentationStarted(false);
+        return;
+      }
+      setStage('result');
+    };
+
+    if (!product) {
+      setStage('products');
+      return null;
+    }
+
+    if (!presentationStarted) {
+      return <View style={styles.coverScreen}><Pressable onPress={() => setStage('products')} style={styles.backButton}><ArrowLeft size={23} color={colors.text} /></Pressable><View style={styles.coverCard}>{presentation?.coverUri ? <Image source={{ uri: presentation.coverUri }} style={styles.coverImage} resizeMode="cover" /> : <View style={styles.coverPlaceholder}><Presentation size={56} color={colors.primary} /></View>}<View style={styles.coverBody}><Text style={styles.eyebrow}>PRESENTACIÓN DE PRODUCTO</Text><Text style={styles.productName}>{product.name}</Text><Text style={styles.productDescription}>{product.presentation}</Text>{presentation ? <Pressable onPress={() => setPresentationStarted(true)} style={styles.primaryButton}><Play size={20} color={colors.onPrimary} fill={colors.onPrimary} /><Text style={styles.primaryButtonText}>Iniciar presentación</Text></Pressable> : <><Text style={styles.unavailable}>Este producto no tiene una presentación descargada.</Text><Pressable onPress={finish} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{hasNext ? 'Siguiente producto' : 'Continuar al resultado'}</Text></Pressable></>}</View></View></View>;
+    }
+
+    return <View style={styles.viewer}><View style={styles.viewerControls}><Pressable onPress={finish} style={styles.finishButton}><Text style={styles.finishText}>{hasNext ? 'Siguiente producto' : 'Finalizar presentación'}</Text></Pressable></View>{Platform.OS === 'web' && presentation?.html ? createElement('iframe', { srcDoc: presentation.html, title: `Presentación de ${product.name}`, sandbox: 'allow-scripts allow-forms allow-popups', style: { width: '100%', height: '100%', border: 0, backgroundColor: '#FFFFFF' } }) : presentation?.uri ? <WebView source={{ uri: presentation.uri }} originWhitelist={['*']} allowFileAccess /> : null}</View>;
+  }
+
+  if (stage === 'result') {
+    return <VisitResultScreen productsOverride={catalog.products} sampleInventoryOverride={catalog.sampleInventory ?? []} allowUnassignedSamples onContinue={(nextResult) => {
+      setResult(nextResult);
+      setStage('comments');
+    }} />;
+  }
+
+  return <VisitCommentsScreen saving={saving} onBack={() => setStage('result')} onSave={(comments) => {
+    if (!doctor || !result) return;
+    setSaving(true);
+    void enqueueOfflineVisit({
+      doctorName: doctor.name,
+      doctorSpecialty: doctor.specialty,
+      clinic: doctor.clinic,
+      address: doctor.address,
+      finalComments: comments.finalComments,
+      productQuantity: 0,
+      requestedProducts: result.requestedProducts.filter((product) => product.quantity > 0),
+      samplesDelivered: result.samplesDelivered,
+      productsPresented: queue.map((product, index) => ({ productId: product.id, productName: product.name, productLine: product.line, order: index + 1 })),
+      probablePurchaseDate: result.probablePurchaseDate,
+      competitionDetected: result.competitionDetected,
+      interestLevel: result.interestLevel,
+      visitStatus: result.visitStatus,
+      requiresFollowUp: comments.requiresFollowUp || result.visitStatus === 'follow_up_pending',
+      urgentRequest: comments.urgentRequest,
+    }).then(onSaved).finally(() => setSaving(false));
+  }} />;
+}
+
+const styles = StyleSheet.create({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, backgroundColor: colors.background, padding: spacing.xl },
+  loadingText: { color: colors.muted, fontSize: 16, fontWeight: '800' },
+  errorTitle: { color: colors.text, fontSize: 24, fontWeight: '900' },
+  errorText: { color: colors.muted, fontSize: 16, textAlign: 'center', maxWidth: 520 },
+  coverScreen: { flex: 1, backgroundColor: colors.background, padding: spacing.xl, gap: spacing.xl },
+  backButton: { width: 46, height: 46, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  coverCard: { flex: 1, maxWidth: 1120, width: '100%', alignSelf: 'center', flexDirection: 'row', overflow: 'hidden', borderRadius: 8, backgroundColor: colors.surface, ...shadows.card },
+  coverImage: { width: '50%', height: '100%', backgroundColor: colors.primarySoft },
+  coverPlaceholder: { width: '50%', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft },
+  coverBody: { flex: 1, justifyContent: 'center', alignItems: 'flex-start', padding: 56, gap: spacing.md },
+  eyebrow: { color: colors.primary, fontSize: 13, fontWeight: '900' },
+  productName: { color: colors.text, fontSize: 42, fontWeight: '900' },
+  productDescription: { color: colors.muted, fontSize: 18, lineHeight: 27, marginBottom: spacing.lg },
+  unavailable: { color: colors.muted, fontSize: 15, fontWeight: '700' },
+  primaryButton: { minHeight: 50, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
+  primaryButtonText: { color: colors.onPrimary, fontSize: 15, fontWeight: '900' },
+  viewer: { flex: 1, backgroundColor: colors.surface },
+  viewerControls: { position: 'absolute', top: spacing.md, right: spacing.md, zIndex: 2 },
+  finishButton: { minHeight: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, backgroundColor: colors.primary, ...shadows.card },
+  finishText: { color: colors.onPrimary, fontSize: 14, fontWeight: '900' },
+});

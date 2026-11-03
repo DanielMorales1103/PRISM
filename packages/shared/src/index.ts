@@ -29,6 +29,8 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   active: boolean;
+  lastLoginAt?: string;
+  lastContentSyncAt?: string;
   deletedAt?: string;
 }
 
@@ -45,6 +47,7 @@ export interface Cycle {
   number: number;
   startsAt: string;
   endsAt: string;
+  durationWeeks: number;
   active: boolean;
 }
 
@@ -122,6 +125,11 @@ export interface VisitRecord {
 
 export type VisitPlanStatus = 'planned' | 'completed' | 'skipped' | 'rescheduled';
 
+export interface PlannedProduct {
+  productId: string;
+  order: number;
+}
+
 export interface VisitPlan {
   id: string;
   userId: string;
@@ -133,4 +141,5 @@ export interface VisitPlan {
   clientId: string;
   status: VisitPlanStatus;
   notes?: string;
+  plannedProducts: PlannedProduct[];
 }

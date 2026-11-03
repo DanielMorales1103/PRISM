@@ -4,6 +4,7 @@ import { AuthenticatedRequest, requireAuth, requireRoles } from '../middleware/a
 import { CycleModel } from '../models/cycle.model.js';
 import { DoctorModel } from '../models/doctor.model.js';
 import { PharmacyModel } from '../models/pharmacy.model.js';
+import { ProductModel } from '../models/product.model.js';
 import { UserModel } from '../models/user.model.js';
 import { VisitPlanModel } from '../models/visit-plan.model.js';
 import { VisitModel } from '../models/visit.model.js';
@@ -29,6 +30,7 @@ function serializePlan(plan: any) {
     clientId: plan.clientId.toString(),
     status: plan.status,
     notes: plan.notes,
+    plannedProducts: (plan.plannedProducts ?? []).map((product: any) => ({ productId: product.productId.toString(), order: product.order })),
   };
 }
 
@@ -58,39 +60,54 @@ async function validateAssignment(clientType: unknown, clientId: Types.ObjectId,
   }
 }
 
+async function parsePlannedProducts(value: unknown) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('Los productos preparados son inválidos.');
+
+  const productIds = value.map((item) => toObjectId((item as { productId?: unknown })?.productId, 'Producto'));
+  if (new Set(productIds.map((id) => id.toString())).size !== productIds.length) {
+    throw new Error('No puedes repetir un producto en la misma visita.');
+  }
+
+  if (productIds.length) {
+    const activeCount = await ProductModel.countDocuments({ _id: { $in: productIds }, active: true });
+    if (activeCount !== productIds.length) throw new Error('Uno de los productos preparados ya no está disponible.');
+  }
+
+  return productIds.map((productId, index) => ({ productId, order: index + 1 }));
+}
+
 async function buildPlanData(body: Record<string, unknown>, currentUserId: string, manager: boolean) {
   const requestedUserId = body.userId ? toObjectId(body.userId, 'Visitador') : new Types.ObjectId(currentUserId);
   const clientId = toObjectId(body.clientId, 'Cliente');
-  const cycleId = toObjectId(body.cycleId, 'Ciclo');
   const clientType = body.clientType === 'doctor' || body.clientType === 'pharmacy' ? body.clientType : '';
   const plannedDate = toPlannedDate(body.plannedDate);
+  const plannedProducts = await parsePlannedProducts(body.plannedProducts);
 
   if (!manager && requestedUserId.toString() !== currentUserId) throw new Error('No puedes planificar visitas para otro visitador.');
   if (!clientType) throw new Error('Tipo de cliente invalido.');
 
   const [visitador, cycle] = await Promise.all([
     UserModel.findOne({ _id: requestedUserId, role: 'visitador', active: true }).lean(),
-    CycleModel.findById(cycleId).lean(),
+    CycleModel.findOne({ startsAt: { $lte: plannedDate }, endsAt: { $gte: plannedDate } }).sort({ startsAt: 1 }).lean(),
   ]);
   if (!visitador) throw new Error('Visitador no encontrado o inactivo.');
-  if (!cycle) throw new Error('Ciclo no encontrado.');
-  if (plannedDate < cycle.startsAt || plannedDate > cycle.endsAt) {
-    throw new Error('La fecha de la cita debe estar dentro del ciclo seleccionado.');
-  }
+  if (!cycle) throw new Error('La fecha de la cita no pertenece a un ciclo creado por administración.');
 
   await validateAssignment(clientType, clientId, requestedUserId);
   const elapsedDays = Math.floor((plannedDate.getTime() - cycle.startsAt.getTime()) / 86_400_000);
 
   return {
     userId: requestedUserId,
-    cycleId,
+    cycleId: cycle._id,
     clientId,
     clientType,
     plannedDate,
-    weekNumber: Math.min(5, Math.max(1, Math.floor(elapsedDays / 7) + 1)),
+    weekNumber: Math.min(cycle.durationWeeks ?? 5, Math.max(1, Math.floor(elapsedDays / 7) + 1)),
     order: Math.max(1, Number(body.order) || 1),
     status: 'planned' as PlanStatus,
     notes: typeof body.notes === 'string' ? body.notes.trim() : '',
+    plannedProducts,
   };
 }
 
@@ -162,6 +179,11 @@ visitPlanRouter.post('/:id/replicate', requireAuth, requireRoles('visitador', 's
     let skipped = 0;
 
     for (const cycle of cycles) {
+      if (source.weekNumber > (cycle.durationWeeks ?? 5)) {
+        skipped += 1;
+        continue;
+      }
+
       const plannedDate = new Date(cycle.startsAt);
       plannedDate.setDate(plannedDate.getDate() + ((source.weekNumber - 1) * 7) + weekdayFromMonday);
       plannedDate.setHours(sourceDate.getHours(), sourceDate.getMinutes(), 0, 0);
@@ -185,6 +207,7 @@ visitPlanRouter.post('/:id/replicate', requireAuth, requireRoles('visitador', 's
         plannedDate: plannedDate.toISOString(),
         order: source.order,
         notes: source.notes,
+        plannedProducts: [],
       }, req.auth!.sub, manager);
       const plan = await VisitPlanModel.create(data);
       created.push(serializePlan(plan));
@@ -219,7 +242,7 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
       res.status(409).json({ message: 'Esta cita ya fue realizada y no puede modificarse.' });
       return;
     }
-    const changesPlanContext = body.userId !== undefined || body.cycleId !== undefined || body.clientId !== undefined || body.clientType !== undefined;
+    const changesPlanContext = body.userId !== undefined || body.cycleId !== undefined || body.clientId !== undefined || body.clientType !== undefined || body.plannedDate !== undefined;
 
     if (changesPlanContext) {
       const data = await buildPlanData({
@@ -230,6 +253,7 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
         plannedDate: body.plannedDate ?? plan.plannedDate.toISOString(),
         order: body.order ?? plan.order,
         notes: body.notes ?? plan.notes,
+        plannedProducts: body.plannedProducts ?? plan.plannedProducts,
       }, req.auth!.sub, manager);
 
       plan.userId = data.userId;
@@ -240,10 +264,12 @@ visitPlanRouter.patch('/:id', requireAuth, requireRoles('visitador', 'supervisor
       plan.weekNumber = data.weekNumber;
       plan.order = data.order;
       plan.notes = data.notes;
+      plan.set('plannedProducts', data.plannedProducts);
     } else {
       if (body.plannedDate !== undefined) plan.plannedDate = toPlannedDate(body.plannedDate);
       if (body.order !== undefined) plan.order = Math.max(1, Number(body.order) || 1);
       if (body.notes !== undefined) plan.notes = typeof body.notes === 'string' ? body.notes.trim() : '';
+      if (body.plannedProducts !== undefined) plan.set('plannedProducts', await parsePlannedProducts(body.plannedProducts));
     }
     if (body.status !== undefined) {
       if (!planStatuses.includes(body.status as PlanStatus)) {

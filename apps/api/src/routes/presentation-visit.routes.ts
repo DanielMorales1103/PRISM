@@ -19,6 +19,7 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
   }
 
   const body = req.body as Record<string, unknown>;
+  const offlineSync = body.offlineSync === true;
   const presentedFlows = Array.isArray(body.presentedFlows)
     ? body.presentedFlows.map((flow) => {
         const currentFlow = flow as Record<string, unknown>;
@@ -68,6 +69,7 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
     requestedSamples.set(productId, (requestedSamples.get(productId) ?? 0) + sample.quantity);
   });
 
+  const inventoryDeductions = new Map<string, number>();
   if (requestedSamples.size) {
     const inventory = await SampleInventoryModel.find({
       userId,
@@ -76,9 +78,26 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
     const available = new Map(inventory.map((item) => [item.productId.toString(), item.quantity]));
     const unavailable = [...requestedSamples.entries()].find(([productId, quantity]) => (available.get(productId) ?? 0) < quantity);
 
-    if (unavailable) {
+    if (unavailable && !offlineSync) {
       res.status(409).json({ message: 'No hay suficientes muestras disponibles para registrar esta visita.' });
       return;
+    }
+
+    requestedSamples.forEach((quantity, productId) => {
+      const deduction = offlineSync ? Math.min(available.get(productId) ?? 0, quantity) : quantity;
+      if (deduction > 0) inventoryDeductions.set(productId, deduction);
+    });
+
+    for (const [productId, quantity] of inventoryDeductions) {
+      const result = await SampleInventoryModel.updateOne(
+        { userId, productId: new Types.ObjectId(productId), quantity: { $gte: quantity } },
+        { $inc: { quantity: -quantity } },
+      );
+
+      if (result.modifiedCount !== 1 && !offlineSync) {
+        res.status(409).json({ message: 'El inventario de muestras cambio antes de guardar la visita. Intenta nuevamente.' });
+        return;
+      }
     }
   }
 
@@ -128,18 +147,6 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
       syncedAt: completedAt,
     })
     : null;
-
-  for (const [productId, quantity] of requestedSamples) {
-    const result = await SampleInventoryModel.updateOne(
-      { userId, productId: new Types.ObjectId(productId), quantity: { $gte: quantity } },
-      { $inc: { quantity: -quantity } },
-    );
-
-    if (result.modifiedCount !== 1) {
-      res.status(409).json({ message: 'El inventario de muestras cambio antes de guardar la visita. Intenta nuevamente.' });
-      return;
-    }
-  }
 
   if (planId && registeredVisit) {
     await VisitPlanModel.updateOne({ _id: planId }, { $set: { status: 'completed' } });

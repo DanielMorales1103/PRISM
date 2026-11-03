@@ -22,8 +22,10 @@ visitRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next) =
     const requestedClientId = typeof req.query.clientId === 'string' ? req.query.clientId.trim() : '';
     const filter: Record<string, unknown> = {};
 
-    if (canViewTeam(req.auth?.role) && requestedUserId && Types.ObjectId.isValid(requestedUserId)) {
-      filter.userId = new Types.ObjectId(requestedUserId);
+    if (canViewTeam(req.auth?.role)) {
+      if (requestedUserId && Types.ObjectId.isValid(requestedUserId)) {
+        filter.userId = new Types.ObjectId(requestedUserId);
+      }
     } else {
       filter.userId = new Types.ObjectId(req.auth!.sub);
     }

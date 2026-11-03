@@ -43,6 +43,9 @@ const VisitSchema = new Schema(
 );
 
 VisitSchema.index({ userId: 1, visitedAt: -1 });
-VisitSchema.index({ localId: 1, userId: 1 }, { unique: true, sparse: true });
+VisitSchema.index(
+  { localId: 1, userId: 1 },
+  { unique: true, partialFilterExpression: { localId: { $type: 'string' } } },
+);
 
 export const VisitModel = model('Visit', VisitSchema);

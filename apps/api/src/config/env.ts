@@ -11,4 +11,7 @@ export const env = {
   defaultAdminName: process.env.DEFAULT_ADMIN_NAME ?? 'Admin Prism',
   defaultAdminEmail: process.env.DEFAULT_ADMIN_EMAIL ?? 'admin@prism.com',
   defaultAdminPassword: process.env.DEFAULT_ADMIN_PASSWORD ?? 'Prism2026!',
+  supabaseUrl: process.env.SUPABASE_URL?.trim(),
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
+  supabaseMarketingBucket: process.env.SUPABASE_MARKETING_BUCKET?.trim(),
 };

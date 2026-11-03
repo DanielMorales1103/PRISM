@@ -14,6 +14,11 @@ export interface OfflineVisitDraft {
   productName?: string;
   productLine?: string;
   productQuantity: number;
+  requestedProducts?: Array<{ productId?: string; productName: string; line: string; quantity: number }>;
+  samplesDelivered?: Array<{ productId?: string; productName: string; line: string; quantity: number }>;
+  productsPresented?: Array<{ productId: string; productName: string; productLine: string; order: number }>;
+  probablePurchaseDate?: string;
+  competitionDetected?: string;
   interestLevel: number;
   visitStatus: 'purchase_made' | 'follow_up_pending' | 'not_interested';
   requiresFollowUp: boolean;

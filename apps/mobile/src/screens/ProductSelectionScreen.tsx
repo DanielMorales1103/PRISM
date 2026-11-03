@@ -3,21 +3,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ArrowLeft, Check, ChevronRight, Filter, Info, Search } from 'lucide-react-native';
 import { api } from '../services/api';
+import { ProductPreparationModal } from '../components/ProductPreparationModal';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface ProductSelectionScreenProps {
   onBack: () => void;
-  onSelectProduct: (product: Product) => void;
+  initialProductIds?: string[];
+  onStartPrepared: (products: Product[]) => void;
+  productsOverride?: Product[];
+  productImageUris?: Record<string, string | undefined>;
 }
 
 const fallbackImage = 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=900&q=80';
 
-export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelectionScreenProps) {
+export function ProductSelectionScreen({ onBack, initialProductIds = [], onStartPrepared, productsOverride, productImageUris }: ProductSelectionScreenProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
   const [status, setStatus] = useState('Cargando portafolio...');
+  const [productPreparationOpen, setProductPreparationOpen] = useState(false);
+  const [plannedProductIds, setPlannedProductIds] = useState<string[]>(initialProductIds);
   const { width } = useWindowDimensions();
   const horizontalPadding = width >= 1200 ? 120 : width >= 900 ? 64 : spacing.lg;
   const gridGap = spacing.lg;
@@ -25,6 +31,12 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
   const cardWidth = Math.floor((width - horizontalPadding * 2 - gridGap * (columns - 1)) / columns);
 
   useEffect(() => {
+    if (productsOverride) {
+      setProducts(productsOverride.filter((product) => product.active));
+      setStatus('');
+      return;
+    }
+
     let mounted = true;
 
     void api
@@ -48,7 +60,11 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [productsOverride]);
+
+  useEffect(() => {
+    setPlannedProductIds(initialProductIds);
+  }, [initialProductIds]);
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -66,6 +82,7 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
   }, [products, query, selectedLines]);
 
   const productLines = useMemo(() => Array.from(new Set(products.map((product) => product.line))).sort(), [products]);
+  const plannedProducts = useMemo(() => plannedProductIds.map((id) => products.find((product) => product.id === id)).filter((product): product is Product => Boolean(product)), [plannedProductIds, products]);
 
   return (
     <View style={styles.screen}>
@@ -86,6 +103,9 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
         </View>
         <Pressable onPress={() => setShowFilters((current) => !current)} style={[styles.filterButton, showFilters && styles.filterButtonActive]}>
           <Filter size={23} color={colors.text} />
+        </Pressable>
+        <Pressable onPress={() => setProductPreparationOpen(true)} style={styles.prepareButton}>
+          <Text style={styles.prepareButtonText}>Preparar visita{plannedProducts.length ? ` (${plannedProducts.length})` : ''}</Text>
         </Pressable>
       </View>
 
@@ -127,20 +147,18 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
       <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }]} showsVerticalScrollIndicator={false}>
         <View style={styles.heading}>
           <Text style={styles.title}>Manual Digital Interactivo</Text>
-          <Text style={styles.subtitle}>Elige el producto que presentaras al medico hoy.</Text>
+          <Text style={styles.subtitle}>Agrega productos a la cola de presentación de esta visita.</Text>
         </View>
 
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
         <View style={[styles.grid, { gap: gridGap }]}>
-          {filteredProducts.map((product) => (
-            <Pressable
-              key={product.id}
-              onPress={() => onSelectProduct(product)}
-              style={({ pressed }) => [styles.card, { width: cardWidth }, pressed && styles.pressed]}
-            >
+          {filteredProducts.map((product) => {
+            const prepared = plannedProductIds.includes(product.id);
+
+            return <View key={product.id} style={[styles.card, { width: cardWidth }]}> 
               <View style={styles.imageWrap}>
-                <Image source={{ uri: product.imageUrl ?? fallbackImage }} style={styles.image} />
+                <Image source={{ uri: productImageUris?.[product.id] ?? product.imageUrl ?? fallbackImage }} style={styles.image} />
                 <View style={styles.linePill}>
                   <Text style={styles.lineText}>{product.line}</Text>
                 </View>
@@ -161,16 +179,20 @@ export function ProductSelectionScreen({ onBack, onSelectProduct }: ProductSelec
                     {product.dosage ?? 'Pendiente de confirmar.'}
                   </Text>
                 </View>
-                <View style={styles.selectButton}>
-                  <Text style={styles.selectButtonText}>Seleccionar</Text>
-                  <ChevronRight size={18} color={colors.onPrimary} />
-                </View>
+                <Pressable disabled={prepared} onPress={() => setPlannedProductIds((current) => [...current, product.id])} style={({ pressed }) => [styles.selectButton, prepared && styles.selectButtonQueued, pressed && styles.pressed]}>
+                  <Text style={[styles.selectButtonText, prepared && styles.selectButtonTextQueued]}>{prepared ? 'En la cola' : 'Seleccionar'}</Text>
+                  {prepared ? <Check size={18} color={colors.muted} /> : <ChevronRight size={18} color={colors.onPrimary} />}
+                </Pressable>
               </View>
-            </Pressable>
-          ))}
+            </View>;
+          })}
+        </View>
+        <View style={styles.preparedBar}>
+          <View><Text style={styles.preparedTitle}>{plannedProducts.length ? `${plannedProducts.length} productos en la cola` : 'Selecciona productos para crear una secuencia'}</Text><Text style={styles.preparedHint}>{plannedProducts.length ? plannedProducts.map((product) => product.name).join(' · ') : 'Puedes ajustar el orden desde Preparar visita.'}</Text></View>
+          <Pressable disabled={!plannedProducts.length} onPress={() => onStartPrepared(plannedProducts)} style={[styles.startPreparedButton, !plannedProducts.length && styles.startPreparedButtonDisabled]}><Text style={styles.startPreparedText}>Iniciar presentación</Text><ChevronRight size={18} color={colors.onPrimary} /></Pressable>
         </View>
       </ScrollView>
-
+      <ProductPreparationModal visible={productPreparationOpen} products={products} selectedProductIds={plannedProductIds} onChange={setPlannedProductIds} onClose={() => setProductPreparationOpen(false)} />
     </View>
   );
 }
@@ -234,6 +256,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
     borderColor: '#FFD4C4',
   },
+  prepareButton: {
+    minHeight: 46,
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  prepareButtonText: { color: colors.primary, fontSize: 14, fontWeight: '900' },
   dropdownBackdrop: {
     position: 'absolute',
     top: 0,
@@ -312,6 +345,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
+  preparedBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.lg, padding: spacing.lg, borderRadius: 8, backgroundColor: '#FFF7F3', borderWidth: 1, borderColor: '#FFD4C4' },
+  preparedTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  preparedHint: { color: colors.muted, fontSize: 13, marginTop: 4, maxWidth: 680 },
+  startPreparedButton: { minHeight: 48, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
+  startPreparedButtonDisabled: { opacity: 0.45 },
+  startPreparedText: { color: colors.onPrimary, fontWeight: '900', fontSize: 14 },
   card: {
     borderRadius: 30,
     borderWidth: 1,
@@ -417,10 +456,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
+  selectButtonQueued: {
+    backgroundColor: '#E5E7EB',
+  },
   selectButtonText: {
     color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '900',
+  },
+  selectButtonTextQueued: {
+    color: colors.muted,
   },
   pressed: {
     opacity: 0.86,

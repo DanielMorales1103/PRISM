@@ -10,6 +10,7 @@ interface NewVisitScreenProps {
   currentUser: SessionUser;
   onBack: () => void;
   onContinue: (doctor: VisitDoctorSnapshot) => void;
+  offline?: boolean;
 }
 
 interface DoctorOption {
@@ -57,14 +58,18 @@ function toDoctorOption(doctor: Doctor): DoctorOption {
   };
 }
 
-export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScreenProps) {
+export function NewVisitScreen({ currentUser, onBack, onContinue, offline = false }: NewVisitScreenProps) {
   const [doctorQuery, setDoctorQuery] = useState('');
   const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>(currentUser.role === 'visitador' ? [] : fallbackDoctors);
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorOption | null>(null);
+  const [manualSpecialty, setManualSpecialty] = useState('');
+  const [manualClinic, setManualClinic] = useState('');
+  const [manualAddress, setManualAddress] = useState('');
   const { width, height } = useWindowDimensions();
   const wide = width >= 900 && width > height;
 
   useEffect(() => {
+    if (offline) return;
     let mounted = true;
 
     void api.getClients()
@@ -87,7 +92,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
     return () => {
       mounted = false;
     };
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, offline]);
 
   const matchingDoctors = useMemo(() => {
     const normalizedQuery = doctorQuery.trim().toLowerCase();
@@ -115,13 +120,13 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
         </View>
         <View style={styles.statusPill}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>Visita en Proceso</Text>
+          <Text style={styles.statusText}>{offline ? 'Visita sin conexión' : 'Visita en Proceso'}</Text>
         </View>
       </View>
 
       <View style={[styles.body, !wide && styles.bodyStacked]}>
-        <View style={styles.formPanel}>
-          <View style={styles.formContent}>
+        <View style={[styles.formPanel, offline && styles.offlineFormPanel]}>
+          <View style={[styles.formContent, offline && styles.offlineFormContent]}>
             <Text style={styles.sectionTitle}>Informacion del Medico</Text>
             <Text style={styles.sectionDescription}>Completa los datos para personalizar la experiencia.</Text>
 
@@ -142,7 +147,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
                       style={styles.input}
                     />
                   </View>
-                  {showDoctorDropdown && (
+                  {!offline && showDoctorDropdown && (
                     <View style={styles.dropdown}>
                       {matchingDoctors.length > 0 ? (
                         matchingDoctors.slice(0, 4).map((doctor) => (
@@ -170,10 +175,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>Especialidad</Text>
-                <View style={styles.inputWrap}>
-                  <Cross size={20} color="#A3A3A3" />
-                  <Text style={styles.selectText}>{selectedDoctor?.specialty ?? 'Selecciona Especialidad'}</Text>
-                </View>
+                <View style={styles.inputWrap}><Cross size={20} color="#A3A3A3" />{offline ? <TextInput value={manualSpecialty} onChangeText={setManualSpecialty} placeholder="Especialidad" placeholderTextColor="#8B8B8B" style={styles.input} /> : <Text style={styles.selectText}>{selectedDoctor?.specialty ?? 'Selecciona Especialidad'}</Text>}</View>
               </View>
             </View>
 
@@ -182,8 +184,9 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
               <View style={styles.inputWrap}>
                 <Building2 size={20} color="#A3A3A3" />
                 <TextInput
-                  value={selectedDoctor?.clinic ?? ''}
-                  editable={!selectedDoctor}
+                  value={offline ? manualClinic : selectedDoctor?.clinic ?? ''}
+                  onChangeText={setManualClinic}
+                  editable={offline || !selectedDoctor}
                   placeholder="Ej. Hospital San Juan de Dios"
                   placeholderTextColor="#8B8B8B"
                   style={styles.input}
@@ -196,8 +199,9 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
               <View style={styles.inputWrap}>
                 <MapPin size={20} color="#A3A3A3" />
                 <TextInput
-                  value={selectedDoctor?.address ?? ''}
-                  editable={!selectedDoctor}
+                  value={offline ? manualAddress : selectedDoctor?.address ?? ''}
+                  onChangeText={setManualAddress}
+                  editable={offline || !selectedDoctor}
                   placeholder="Calle, zona, edificio..."
                   placeholderTextColor="#8B8B8B"
                   style={styles.input}
@@ -211,19 +215,19 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
               onContinue({
                 id: selectedDoctor?.id,
                 name: selectedDoctor?.name ?? doctorQuery.trim(),
-                specialty: selectedDoctor?.specialty,
-                clinic: selectedDoctor?.clinic,
-                address: selectedDoctor?.address,
+                specialty: offline ? manualSpecialty.trim() : selectedDoctor?.specialty,
+                clinic: offline ? manualClinic.trim() : selectedDoctor?.clinic,
+                address: offline ? manualAddress.trim() : selectedDoctor?.address,
               })
             }
-            style={({ pressed }) => [styles.continueButton, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.continueButton, offline && styles.offlineContinueButton, pressed && styles.pressed]}
           >
-            <Text style={styles.continueText}>Continuar a Seleccion de Producto</Text>
+            <Text style={[styles.continueText, offline && styles.offlineContinueText]}>Continuar a Seleccion de Producto</Text>
             <ChevronRight size={22} color={colors.onPrimary} />
           </Pressable>
         </View>
 
-        <View style={styles.mapPanel}>
+        {!offline && <View style={styles.mapPanel}>
           <View style={styles.searchRow}>
             <View style={styles.searchBox}>
               <Text style={styles.searchText}>Buscar ubicacion...</Text>
@@ -247,7 +251,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue }: NewVisitScre
             </View>
             <LocateFixed size={22} color="transparent" />
           </View>
-        </View>
+        </View>}
       </View>
     </View>
   );
@@ -326,6 +330,8 @@ const styles = StyleSheet.create({
     gap: spacing.xl,
     maxWidth: 840,
   },
+  offlineFormPanel: { borderRightWidth: 0, alignItems: 'center', paddingBottom: 40 },
+  offlineFormContent: { width: '100%', maxWidth: 1120 },
   sectionTitle: {
     color: '#050505',
     fontSize: 28,
@@ -433,6 +439,19 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     fontSize: 19,
     fontWeight: '900',
+  },
+  offlineContinueButton: {
+    width: '100%',
+    maxWidth: 1120,
+    minHeight: 68,
+    borderRadius: 20,
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  offlineContinueText: {
+    flex: 1,
+    fontSize: 17,
+    textAlign: 'center',
   },
   mapPanel: {
     flex: 1,

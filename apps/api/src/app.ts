@@ -10,6 +10,7 @@ import { clientRouter } from './routes/client.routes.js';
 import { cycleRouter } from './routes/cycle.routes.js';
 import { dashboardRouter } from './routes/dashboard.routes.js';
 import { examRouter } from './routes/exam.routes.js';
+import { marketingRouter } from './routes/marketing.routes.js';
 import { presentationVisitRouter } from './routes/presentation-visit.routes.js';
 import { productRouter } from './routes/product.routes.js';
 import { sampleInventoryRouter } from './routes/sample-inventory.routes.js';
@@ -54,7 +55,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(express.json());
+app.use(express.json({ limit: '70mb' }));
 
 app.get('/health', async (_req, res) => {
   try {
@@ -88,6 +89,7 @@ app.use('/api/clients', clientRouter);
 app.use('/api/cycles', cycleRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/exams', examRouter);
+app.use('/api/marketing', marketingRouter);
 app.use('/api/presentation-visits', presentationVisitRouter);
 app.use('/api/products', productRouter);
 app.use('/api/sample-inventory', sampleInventoryRouter);

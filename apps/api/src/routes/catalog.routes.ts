@@ -36,6 +36,7 @@ catalogRouter.get('/', async (_req, res, next) => {
         number: cycle.number,
         startsAt: cycle.startsAt,
         endsAt: cycle.endsAt,
+        durationWeeks: cycle.durationWeeks ?? 5,
         active: cycle.active,
       })),
     });

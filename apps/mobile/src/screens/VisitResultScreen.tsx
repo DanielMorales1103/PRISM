@@ -26,6 +26,9 @@ export interface VisitResultDraft {
 
 interface VisitResultScreenProps {
   onContinue: (result: VisitResultDraft) => void;
+  productsOverride?: Product[];
+  sampleInventoryOverride?: SampleInventoryItem[];
+  allowUnassignedSamples?: boolean;
 }
 
 const visitStatuses = [
@@ -37,7 +40,7 @@ const visitStatuses = [
 const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
-export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
+export function VisitResultScreen({ onContinue, productsOverride, sampleInventoryOverride, allowUnassignedSamples = false }: VisitResultScreenProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [visitStatus, setVisitStatus] = useState<VisitStatus | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -50,6 +53,13 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
   const [interestLevel, setInterestLevel] = useState(3);
 
   useEffect(() => {
+    if (productsOverride) {
+      const activeProducts = productsOverride.filter((product) => product.active);
+      setProducts(activeProducts);
+      setSampleInventory(allowUnassignedSamples ? activeProducts.map((product) => ({ id: `offline-${product.id}`, userId: 'offline', productId: product.id, productName: product.name, line: product.line, presentation: product.presentation, quantity: Number.MAX_SAFE_INTEGER })) : (sampleInventoryOverride ?? []).filter((item) => item.quantity > 0));
+      return;
+    }
+
     let mounted = true;
 
     void Promise.all([
@@ -64,7 +74,7 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [productsOverride, sampleInventoryOverride, allowUnassignedSamples]);
 
   const requestedProducts = useMemo(
     () =>
@@ -97,7 +107,7 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
   const updateSampleQuantity = (item: SampleInventoryItem, delta: number) => {
     setSampleQuantities((current) => ({
       ...current,
-      [item.productId]: Math.min(Math.max((current[item.productId] ?? 0) + delta, 0), item.quantity),
+      [item.productId]: allowUnassignedSamples ? Math.max((current[item.productId] ?? 0) + delta, 0) : Math.min(Math.max((current[item.productId] ?? 0) + delta, 0), item.quantity),
     }));
   };
 
@@ -113,6 +123,7 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
   }, [visibleMonth]);
 
   const displayPurchaseDate = probablePurchaseDate ? formatDisplayDate(probablePurchaseDate) : '';
+  const todayIso = formatIsoDate(new Date());
 
   const changeMonth = (delta: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -178,14 +189,14 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
             <View key={item.productId} style={styles.quantityCard}>
               <View>
                 <Text style={styles.quantityProduct}>{item.productName}</Text>
-                <Text style={styles.quantityLine}>{item.line} · Disponibles: {item.quantity}</Text>
+                <Text style={styles.quantityLine}>{allowUnassignedSamples ? item.line : `${item.line} · Disponibles: ${item.quantity}`}</Text>
               </View>
               <View style={styles.stepper}>
                 <Pressable onPress={() => updateSampleQuantity(item, -1)} style={styles.stepperButton}>
                   <Minus size={20} color="#9A9A9A" />
                 </Pressable>
                 <Text style={styles.stepperValue}>{sampleQuantities[item.productId] ?? 0}</Text>
-                <Pressable disabled={(sampleQuantities[item.productId] ?? 0) >= item.quantity} onPress={() => updateSampleQuantity(item, 1)} style={[styles.stepperButton, styles.stepperButtonActive, (sampleQuantities[item.productId] ?? 0) >= item.quantity && styles.stepperButtonDisabled]}>
+                <Pressable disabled={!allowUnassignedSamples && (sampleQuantities[item.productId] ?? 0) >= item.quantity} onPress={() => updateSampleQuantity(item, 1)} style={[styles.stepperButton, styles.stepperButtonActive, !allowUnassignedSamples && (sampleQuantities[item.productId] ?? 0) >= item.quantity && styles.stepperButtonDisabled]}>
                   <Plus size={20} color={colors.onPrimary} />
                 </Pressable>
               </View>
@@ -231,14 +242,15 @@ export function VisitResultScreen({ onContinue }: VisitResultScreenProps) {
 
                     const isoDate = formatIsoDate(date);
                     const selected = probablePurchaseDate === isoDate;
+                    const today = todayIso === isoDate;
 
                     return (
                       <Pressable
                         key={isoDate}
                         onPress={() => selectDate(date)}
-                        style={({ pressed }) => [styles.dayButton, selected && styles.dayButtonSelected, pressed && styles.pressed]}
+                        style={({ pressed }) => [styles.dayButton, today && styles.dayButtonToday, selected && styles.dayButtonSelected, pressed && styles.pressed]}
                       >
-                        <Text style={[styles.dayText, selected && styles.dayTextSelected]}>{date.getDate()}</Text>
+                        <Text style={[styles.dayText, today && styles.dayTextToday, selected && styles.dayTextSelected]}>{date.getDate()}</Text>
                       </Pressable>
                     );
                   })}
@@ -574,6 +586,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.primary,
   },
+  dayButtonToday: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 14,
+  },
   dayText: {
     color: colors.text,
     fontSize: 14,
@@ -581,6 +598,9 @@ const styles = StyleSheet.create({
   },
   dayTextSelected: {
     color: colors.onPrimary,
+  },
+  dayTextToday: {
+    color: colors.primary,
   },
   interestBlock: {
     width: '48%',

@@ -156,11 +156,13 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
     };
   }, []);
 
+  const scopedDoctors = useMemo(() => currentUser.role === 'visitador' ? doctors.filter((doctor) => doctor.assignedUserId === currentUser.id) : doctors, [currentUser.id, currentUser.role, doctors]);
+  const scopedPharmacies = useMemo(() => currentUser.role === 'visitador' ? pharmacies.filter((pharmacy) => pharmacy.assignedUserId === currentUser.id) : pharmacies, [currentUser.id, currentUser.role, pharmacies]);
+  const scopedInstitutions = useMemo(() => currentUser.role === 'visitador' ? institutions.filter((institution) => institution.assignedUserId === currentUser.id) : institutions, [currentUser.id, currentUser.role, institutions]);
   const currentRows = useMemo(() => {
-    const rows = tab === 'doctors' ? doctors : pharmacies;
-    const visibleRows = currentUser.role === 'visitador' ? rows.filter((client) => client.assignedUserId === currentUser.id) : rows;
-    return visibleRows.filter((client) => (listFilter === 'active' ? client.active : !client.active) && (!showOnlyFree || !client.assignedUserId));
-  }, [currentUser.id, currentUser.role, doctors, listFilter, pharmacies, showOnlyFree, tab]);
+    const rows = tab === 'doctors' ? scopedDoctors : scopedPharmacies;
+    return rows.filter((client) => (listFilter === 'active' ? client.active : !client.active) && (!showOnlyFree || !client.assignedUserId));
+  }, [listFilter, scopedDoctors, scopedPharmacies, showOnlyFree, tab]);
   const visibleCurrentRows = useMemo(() => {
     const normalizedSearch = directorySearch.trim().toLocaleLowerCase();
 
@@ -200,10 +202,10 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
     users.forEach((user) => nextUsersById.set(user.id, user));
     return nextUsersById;
   }, [users]);
-  const activeDoctors = doctors.filter((doctor) => doctor.active).length;
-  const activePharmacies = pharmacies.filter((pharmacy) => pharmacy.active).length;
+  const activeDoctors = scopedDoctors.filter((doctor) => doctor.active).length;
+  const activePharmacies = scopedPharmacies.filter((pharmacy) => pharmacy.active).length;
   const freeClientCount = (tab === 'doctors' ? doctors : pharmacies).filter((client) => client.active && !client.assignedUserId).length;
-  const activeInstitutions = institutions.filter((institution) => institution.active).length;
+  const activeInstitutions = scopedInstitutions.filter((institution) => institution.active).length;
   const canDeleteFromTab = canEdit;
 
   useEffect(() => {
@@ -427,8 +429,8 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
           <Users size={26} color={colors.primary} />
         </View>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Clientes</Text>
-          <Text style={styles.description}>Gestion inicial de medicos, farmacias e instituciones registrados.</Text>
+          <Text style={styles.title}>Médicos</Text>
+          <Text style={styles.description}>Consulta médicos, farmacias e instituciones de la cartera.</Text>
         </View>
       </View>
 
@@ -666,7 +668,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
       <View style={styles.listCard}>
         <View style={styles.listHeader}>
           <View>
-            <Text style={styles.cardTitle}>Clientes registrados</Text>
+            <Text style={styles.cardTitle}>{tab === 'doctors' ? 'Médicos registrados' : 'Farmacias registradas'}</Text>
             <Text style={styles.subhead}>{loading ? 'Cargando datos...' : `${currentRows.length} ${listFilter === 'active' ? 'activos' : 'eliminados'}`}</Text>
           </View>
           {!canEdit && <Text style={styles.readOnlyBadge}>Solo consulta</Text>}
@@ -706,7 +708,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
         {!directorySearch.trim() && !showOnlyFree ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Busca un registro</Text>
-            <Text style={styles.emptyText}>Escribe un nombre o dirección, o usa Solo libres para ver clientes disponibles.</Text>
+            <Text style={styles.emptyText}>Escribe un nombre o dirección para consultar los registros disponibles.</Text>
           </View>
         ) : (
           <>

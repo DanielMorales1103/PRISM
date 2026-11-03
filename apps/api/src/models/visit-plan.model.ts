@@ -12,6 +12,10 @@ const VisitPlanSchema = new Schema(
     clientId: { type: Schema.Types.ObjectId, required: true, index: true },
     status: { type: String, enum: ['planned', 'completed', 'skipped', 'rescheduled'], default: 'planned', index: true },
     notes: { type: String, trim: true },
+    plannedProducts: [{
+      productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
+      order: { type: Number, required: true, min: 1 },
+    }],
   },
   { timestamps: true },
 );

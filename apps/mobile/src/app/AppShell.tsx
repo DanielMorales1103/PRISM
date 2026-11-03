@@ -1,26 +1,24 @@
 import type { Product, VisitPlan } from '@prism/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
 import { CyclesScreen } from '../screens/CyclesScreen';
-import { ExperienceDigitalScreen } from '../screens/ExperienceDigitalScreen';
 import { HomeScreen } from '../screens/HomeScreen';
-import { InteractivePresentationScreen } from '../screens/InteractivePresentationScreen';
 import { KpiDashboardScreen } from '../screens/KpiDashboardScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MapScreen } from '../screens/MapScreen';
+import { MarketingScreen } from '../screens/MarketingScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { VisitadoresScreen } from '../screens/VisitadoresScreen';
 import { VisitHistoryScreen } from '../screens/VisitHistoryScreen';
-import { MedicalEvidenceScreen } from '../screens/MedicalEvidenceScreen';
 import { ModuleScreen } from '../screens/ModuleScreen';
 import { NewVisitScreen } from '../screens/NewVisitScreen';
 import { OfflineVisitScreen } from '../screens/OfflineVisitScreen';
 import { ProductSelectionScreen } from '../screens/ProductSelectionScreen';
 import { SplashScreen } from '../screens/SplashScreen';
-import { StorytellingPresentationScreen } from '../screens/StorytellingPresentationScreen';
+import { ProductPresentationScreen } from '../screens/ProductPresentationScreen';
 import { TrainingScreen } from '../screens/TrainingScreen';
 import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
 import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
@@ -33,12 +31,16 @@ import { api } from '../services/api';
 import { clearSession, loadSession, loadToken } from '../services/session';
 import { saveSession } from '../services/session';
 import { loadOfflineVisits, OfflineVisitDraft } from '../services/offlineVisitQueue';
-import { Menu } from 'lucide-react-native';
+import { loadOfflineCatalog } from '../services/offlineCatalog';
+import { Menu, WifiOff } from 'lucide-react-native';
 
 interface VisitDraft {
   planId?: string;
   doctor?: VisitDoctorSnapshot;
   product?: Product;
+  plannedProductIds?: string[];
+  presentationQueue?: Product[];
+  presentationIndex?: number;
   presentedFlows?: PresentedFlowDraft[];
   result?: VisitResultDraft;
 }
@@ -61,6 +63,10 @@ export function AppShell() {
   const [savingVisit, setSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
   const [offlineVisits, setOfflineVisits] = useState<OfflineVisitDraft[]>([]);
+  const [apiAvailable, setApiAvailable] = useState<boolean | null>(null);
+  const [offlineVisitKey, setOfflineVisitKey] = useState(0);
+  const [connectionLostVisible, setConnectionLostVisible] = useState(false);
+  const apiFailureCount = useRef(0);
   const [planCandidates, setPlanCandidates] = useState<VisitPlan[]>([]);
   const [candidateDoctor, setCandidateDoctor] = useState<VisitDoctorSnapshot | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -72,6 +78,37 @@ export function AppShell() {
       setSidebarOpen(false);
     }
   }, [compactNav]);
+
+  useEffect(() => {
+    if (!user) {
+      setApiAvailable(null);
+      return;
+    }
+
+    let live = true;
+    const checkApi = async () => {
+      try {
+        await api.getClients();
+        if (live) {
+          apiFailureCount.current = 0;
+          setApiAvailable(true);
+        }
+      } catch {
+        if (!live) return;
+        apiFailureCount.current += 1;
+        if (apiFailureCount.current < 2) return;
+        setApiAvailable(false);
+        setConnectionLostVisible(true);
+      }
+    };
+
+    void checkApi();
+    const timer = setInterval(() => { void checkApi(); }, 5000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [user]);
 
   const handleSplashDone = useCallback(() => {
     setCheckingSession(true);
@@ -92,7 +129,9 @@ export function AppShell() {
   }, []);
 
   const handleLogin = (nextUser: SessionUser) => {
+    apiFailureCount.current = 0;
     setUser(nextUser);
+    setApiAvailable(true);
     void loadOfflineVisits().then(setOfflineVisits);
     setScreen('home');
   };
@@ -100,14 +139,43 @@ export function AppShell() {
   const handleLogout = () => {
     void clearSession().finally(() => {
       setUser(null);
+      setApiAvailable(null);
       setScreen('login');
     });
   };
 
-  const continueVisit = (doctor: VisitDoctorSnapshot, planId?: string) => {
+  const confirmConnectionLost = () => {
+    void clearSession().finally(() => {
+      setConnectionLostVisible(false);
+      setUser(null);
+      setApiAvailable(null);
+      setScreen('login');
+    });
+  };
+
+  const navigateFromHome = (nextScreen: AppScreen) => {
+    if (nextScreen !== 'new-visit' || user?.role !== 'visitador') {
+      setScreen(nextScreen);
+      return;
+    }
+
+    void api.getClients()
+      .then(() => {
+        setApiAvailable(true);
+        setScreen('new-visit');
+      })
+      .catch(async () => {
+        setApiAvailable(false);
+        const snapshot = await loadOfflineCatalog();
+        if (snapshot?.products.length) setConnectionLostVisible(true);
+        else Alert.alert('Sin conexión', 'No hay un catálogo sincronizado disponible para registrar la visita sin conexión.');
+      });
+  };
+
+  const continueVisit = (doctor: VisitDoctorSnapshot, planId?: string, plannedProductIds: string[] = []) => {
     setPlanCandidates([]);
     setCandidateDoctor(null);
-    setVisitDraft({ doctor, planId });
+    setVisitDraft({ doctor, planId, plannedProductIds });
     setScreen('product-selection');
   };
 
@@ -133,18 +201,6 @@ export function AppShell() {
         return;
       }
 
-      if (matches.length === 1) {
-        Alert.alert(
-          'Cita planificada encontrada',
-          `Hay una cita pendiente hoy para ${doctor.name}. ¿Deseas vincular esta visita?`,
-          [
-            { text: 'Sin vincular', style: 'cancel', onPress: () => continueVisit(doctor) },
-            { text: 'Vincular cita', onPress: () => continueVisit(doctor, matches[0].id) },
-          ],
-        );
-        return;
-      }
-
       setCandidateDoctor(doctor);
       setPlanCandidates(matches);
     } catch {
@@ -152,42 +208,27 @@ export function AppShell() {
     }
   };
 
-  const startPresentedFlow = (type: PresentationFlowType) => {
-    const startedAt = new Date().toISOString();
+  const finishProductPresentation = () => {
+    const completedAt = new Date().toISOString();
+    const nextIndex = (visitDraft.presentationIndex ?? 0) + 1;
+    const hasNextProduct = Boolean(visitDraft.presentationQueue?.[nextIndex]);
 
     setVisitDraft((current) => ({
       ...current,
+      product: hasNextProduct ? current.presentationQueue?.[nextIndex] : current.product,
+      presentationIndex: nextIndex,
       presentedFlows: [
         ...(current.presentedFlows ?? []),
         {
-          type,
+          type: 'interactive',
           productId: current.product?.id,
           productName: current.product?.name,
-          startedAt,
+          startedAt: completedAt,
+          completedAt,
         },
       ],
     }));
-  };
-
-  const completeLatestPresentedFlow = () => {
-    const completedAt = new Date().toISOString();
-
-    setVisitDraft((current) => {
-      const presentedFlows = [...(current.presentedFlows ?? [])];
-      const latestIndex = presentedFlows.findLastIndex((flow) => !flow.completedAt);
-
-      if (latestIndex >= 0) {
-        presentedFlows[latestIndex] = {
-          ...presentedFlows[latestIndex],
-          completedAt,
-        };
-      }
-
-      return {
-        ...current,
-        presentedFlows,
-      };
-    });
+    if (!hasNextProduct) setScreen('visit-result');
   };
 
   const handleSaveVisit = async (comments: { finalComments: string; requiresFollowUp: boolean; urgentRequest: boolean }) => {
@@ -256,7 +297,11 @@ export function AppShell() {
   }
 
   if (screen === 'offline-visit') {
-    return <OfflineVisitScreen onBack={() => setScreen('login')} onSaved={() => setScreen('login')} />;
+    return <OfflineVisitScreen key={offlineVisitKey} currentUser={user} onBack={() => setScreen(user && apiAvailable ? 'home' : 'login')} onSaved={() => {
+      void loadOfflineVisits().then(setOfflineVisits);
+      setOfflineVisitKey((current) => current + 1);
+      setScreen(user && apiAvailable ? 'home' : 'login');
+    }} />;
   }
 
   if (screen === 'login' || !user) {
@@ -265,7 +310,7 @@ export function AppShell() {
 
   const renderScreen = () => {
     if (!canAccessScreen(user.role, screen)) {
-      return <HomeScreen user={user} onNavigate={setScreen} />;
+      return <HomeScreen user={user} onNavigate={navigateFromHome} onStartVisit={continueVisit} />;
     }
 
     switch (screen) {
@@ -293,9 +338,10 @@ export function AppShell() {
         return (
           <ProductSelectionScreen
             onBack={() => setScreen('new-visit')}
-            onSelectProduct={(product) => {
-              setVisitDraft((current) => ({ ...current, product }));
-              setScreen('experience-digital');
+            initialProductIds={visitDraft.plannedProductIds}
+            onStartPrepared={(products) => {
+              setVisitDraft((current) => ({ ...current, product: products[0], plannedProductIds: products.map((product) => product.id), presentationQueue: products, presentationIndex: 0 }));
+              setScreen('interactive-presentation');
             }}
           />
         );
@@ -304,30 +350,21 @@ export function AppShell() {
           return (
             <ProductSelectionScreen
               onBack={() => setScreen('new-visit')}
-              onSelectProduct={(product) => {
-                setVisitDraft((current) => ({ ...current, product }));
-                setScreen('experience-digital');
+              initialProductIds={visitDraft.plannedProductIds}
+              onStartPrepared={(products) => {
+                setVisitDraft((current) => ({ ...current, product: products[0], plannedProductIds: products.map((product) => product.id), presentationQueue: products, presentationIndex: 0 }));
+                setScreen('interactive-presentation');
               }}
             />
           );
         }
 
         return (
-          <ExperienceDigitalScreen
+          <ProductPresentationScreen
             product={visitDraft.product}
             onBack={() => setScreen('product-selection')}
-            onStartInteractive={() => {
-              startPresentedFlow('interactive');
-              setScreen('interactive-presentation');
-            }}
-            onStartStorytelling={() => {
-              startPresentedFlow('storytelling');
-              setScreen('storytelling-presentation');
-            }}
-            onStartEvidence={() => {
-              startPresentedFlow('clinical');
-              setScreen('medical-evidence');
-            }}
+            onFinish={finishProductPresentation}
+            finishLabel={visitDraft.presentationQueue?.[(visitDraft.presentationIndex ?? 0) + 1] ? 'Siguiente producto' : 'Finalizar presentación'}
           />
         );
       case 'interactive-presentation':
@@ -337,31 +374,14 @@ export function AppShell() {
         }
 
         return (
-          <InteractivePresentationScreen
+          <ProductPresentationScreen
             product={visitDraft.product}
-            onClose={() => setScreen('experience-digital')}
-            onFinish={() => {
-              completeLatestPresentedFlow();
-              setScreen('visit-result');
-            }}
+            onBack={() => setScreen('product-selection')}
+            onFinish={finishProductPresentation}
+            finishLabel={visitDraft.presentationQueue?.[(visitDraft.presentationIndex ?? 0) + 1] ? 'Siguiente producto' : 'Finalizar presentación'}
           />
         );
       case 'storytelling-presentation':
-        if (!visitDraft.product) {
-          setScreen('product-selection');
-          return null;
-        }
-
-        return (
-          <StorytellingPresentationScreen
-            product={visitDraft.product}
-            onClose={() => setScreen('experience-digital')}
-            onFinish={() => {
-              completeLatestPresentedFlow();
-              setScreen('visit-result');
-            }}
-          />
-        );
       case 'medical-evidence':
         if (!visitDraft.product) {
           setScreen('product-selection');
@@ -369,13 +389,11 @@ export function AppShell() {
         }
 
         return (
-          <MedicalEvidenceScreen
+          <ProductPresentationScreen
             product={visitDraft.product}
-            onClose={() => setScreen('experience-digital')}
-            onContinue={() => {
-              completeLatestPresentedFlow();
-              setScreen('visit-result');
-            }}
+            onBack={() => setScreen('product-selection')}
+            onFinish={finishProductPresentation}
+            finishLabel={visitDraft.presentationQueue?.[(visitDraft.presentationIndex ?? 0) + 1] ? 'Siguiente producto' : 'Finalizar presentación'}
           />
         );
       case 'visit-result':
@@ -402,18 +420,21 @@ export function AppShell() {
       case 'visits':
         return <VisitHistoryScreen currentUser={user} />;
       case 'marketing':
+        return <MarketingScreen />;
       case 'billing':
         return <ModuleScreen role={user.role} type={screen} />;
       case 'home':
       default:
-        return <HomeScreen user={user} onNavigate={setScreen} />;
+        return <HomeScreen user={user} onNavigate={navigateFromHome} onStartVisit={continueVisit} />;
     }
   };
+
+  const immersivePresentation = screen === 'interactive-presentation';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.shell}>
-        {!compactNav && sidebarOpen ? (
+        {!immersivePresentation && !compactNav && sidebarOpen ? (
           <Sidebar
             active={screen}
             compact={false}
@@ -424,7 +445,7 @@ export function AppShell() {
           />
         ) : null}
         <View style={styles.workspace}>
-          {(!sidebarOpen || compactNav) ? <View style={styles.navBar}>
+          {!immersivePresentation && (!sidebarOpen || compactNav) ? <View style={styles.navBar}>
             <Pressable
               accessibilityLabel={sidebarOpen ? 'Ocultar menu' : 'Abrir menu'}
               onPress={() => setSidebarOpen((open) => !open)}
@@ -468,15 +489,27 @@ export function AppShell() {
           </View>
         </View>
       </Modal>
+      <Modal transparent visible={connectionLostVisible} animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.connectionIcon}><WifiOff size={28} color={colors.primary} /></View>
+            <Text style={styles.modalTitle}>Sin conexión</Text>
+            <Text style={styles.modalText}>Se perdió la conexión con el servidor. La sesión se cerrará para proteger los datos. Desde el inicio de sesión puedes entrar en modo offline.</Text>
+            <Pressable onPress={confirmConnectionLost} style={({ pressed }) => [styles.modalButton, pressed && styles.modalButtonPressed]}>
+              <Text style={styles.modalButtonText}>Ir al inicio de sesión</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal transparent visible={Boolean(candidateDoctor && planCandidates.length)} animationType="fade" onRequestClose={() => {}}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Selecciona la cita</Text>
-            <Text style={styles.modalText}>Hay varias citas pendientes hoy para {candidateDoctor?.name}. Elige la que corresponde a esta visita.</Text>
+            <Text style={styles.modalTitle}>{planCandidates.length === 1 ? 'Cita planificada encontrada' : 'Selecciona la cita'}</Text>
+            <Text style={styles.modalText}>{planCandidates.length === 1 ? `Hay una cita pendiente hoy para ${candidateDoctor?.name}. ¿Deseas vincular esta visita?` : `Hay varias citas pendientes hoy para ${candidateDoctor?.name}. Elige la que corresponde a esta visita.`}</Text>
             <View style={styles.candidateList}>
-              {planCandidates.map((plan) => <Pressable key={plan.id} onPress={() => candidateDoctor && continueVisit(candidateDoctor, plan.id)} style={styles.candidateButton}>
+              {planCandidates.map((plan) => <Pressable key={plan.id} onPress={() => candidateDoctor && continueVisit(candidateDoctor, plan.id, (plan.plannedProducts ?? []).sort((first, second) => first.order - second.order).map((product) => product.productId))} style={styles.candidateButton}>
                 <Text style={styles.candidateTime}>{new Date(plan.plannedDate).toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit', hour12: false })}</Text>
-                <Text style={styles.candidateText}>{plan.notes?.trim() || 'Cita planificada'}</Text>
+                <Text style={styles.candidateText}>{planCandidates.length === 1 ? 'Vincular cita' : plan.notes?.trim() || 'Cita planificada'}</Text>
               </Pressable>)}
             </View>
             <Pressable onPress={() => candidateDoctor && continueVisit(candidateDoctor)} style={({ pressed }) => [styles.secondaryModalButton, pressed && styles.modalButtonPressed]}>
@@ -485,7 +518,7 @@ export function AppShell() {
           </View>
         </View>
       </Modal>
-      <OfflineVisitSyncModal user={user} queue={offlineVisits} onSynced={(id) => setOfflineVisits((current) => current.filter((visit) => visit.id !== id))} />
+      {apiAvailable ? <OfflineVisitSyncModal user={user} queue={offlineVisits} onSynced={(id) => setOfflineVisits((current) => current.filter((visit) => visit.id !== id))} /> : null}
     </SafeAreaView>
   );
 }
@@ -564,6 +597,14 @@ const styles = StyleSheet.create({
     padding: 28,
     alignItems: 'center',
     gap: 14,
+  },
+  connectionIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitle: {
     color: colors.text,
