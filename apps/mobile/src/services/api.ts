@@ -317,10 +317,13 @@ export const api = {
   getTrainings: (token: string) => getAuthorizedJson<TrainingItem[]>('/api/trainings', token),
   createTraining: (token: string, payload: { title: string; description?: string; resourceUrl: string }) =>
     postJson<TrainingItem>('/api/trainings', payload, token),
+  updateTrainingStatus: (token: string, id: string, active: boolean) =>
+    patchJson<TrainingItem>(`/api/trainings/${id}/status`, { active }, token),
   completeTraining: (token: string, id: string) => postJson<{ trainingId: string; completedAt: string }>(`/api/trainings/${id}/complete`, {}, token),
   getExams: (token: string) => getAuthorizedJson<ExamItem[]>('/api/exams', token),
   createExam: (token: string, payload: { title: string; description?: string; passingScore: number; questions: Array<{ id?: string; prompt: string; type: ExamQuestionType; options: string[]; correctOptionIndexes: number[]; acceptedAnswers: string[] }> }) => postJson<ExamItem>('/api/exams', payload, token),
   updateExam: (token: string, id: string, payload: { title: string; description?: string; passingScore: number; questions: Array<{ id?: string; prompt: string; type: ExamQuestionType; options: string[]; correctOptionIndexes: number[]; acceptedAnswers: string[] }> }) => patchJson<ExamItem>(`/api/exams/${id}`, payload, token),
+  updateExamStatus: (token: string, id: string, active: boolean) => patchJson<ExamItem>(`/api/exams/${id}/status`, { active }, token),
   getExamResults: (token: string, id: string) => getAuthorizedJson<ExamResultsResponse>(`/api/exams/${id}/results`, token),
   submitExam: (token: string, id: string, answers: Array<{ questionId: string; selectedOptionIndexes?: number[]; textAnswer?: string }>) => postJson<ExamAttemptResult>(`/api/exams/${id}/submit`, { answers }, token),
   createProduct: (token: string, payload: CreateProductPayload) => postJson<Product>('/api/products', payload, token),

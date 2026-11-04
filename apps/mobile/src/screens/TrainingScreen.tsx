@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BookOpenCheck, CheckCircle2, ExternalLink, Plus } from 'lucide-react-native';
+import { Archive, BookOpenCheck, CheckCircle2, ExternalLink, Plus, RotateCcw } from 'lucide-react-native';
 import { SessionUser } from '../app/types';
 import { api, TrainingItem } from '../services/api';
 import { loadToken } from '../services/session';
@@ -76,8 +76,20 @@ export function TrainingScreen({ currentUser }: TrainingScreenProps) {
     }
   };
 
+  const updateStatus = async (training: TrainingItem) => {
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesion no disponible.');
+      const updated = await api.updateTrainingStatus(token, training.id, !training.active);
+      setTrainings((current) => current.map((item) => item.id === training.id ? { ...item, active: updated.active } : item));
+      setMessage(updated.active ? 'Capacitacion habilitada.' : 'Capacitacion deshabilitada.');
+    } catch (error) {
+      Alert.alert('No se pudo cambiar el estado', error instanceof Error ? error.message : 'Intenta nuevamente.');
+    }
+  };
+
   return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-    <View style={styles.header}><View><Text style={styles.title}>Capacitaciones</Text><Text style={styles.subtitle}>{canManage ? 'Publica guias en Google Drive para el equipo.' : 'Material de estudio disponible para tu trabajo de visita.'}</Text></View><View style={styles.counter}><BookOpenCheck size={19} color={colors.primary} /><Text style={styles.counterText}>{completedCount}/{trainings.length} completadas</Text></View></View>
+    <View style={styles.header}><View><Text style={styles.title}>Capacitaciones</Text><Text style={styles.subtitle}>{canManage ? 'Publica guias en Google Drive para el equipo.' : 'Material de estudio disponible para tu trabajo de visita.'}</Text></View>{!canManage ? <View style={styles.counter}><BookOpenCheck size={19} color={colors.primary} /><Text style={styles.counterText}>{completedCount}/{trainings.length} completadas</Text></View> : null}</View>
 
     {canManage && <View style={styles.publishCard}>
       <Text style={styles.cardTitle}>Nueva capacitacion</Text>
@@ -92,8 +104,8 @@ export function TrainingScreen({ currentUser }: TrainingScreenProps) {
     {!loading && trainings.length === 0 ? <View style={styles.emptyCard}><BookOpenCheck size={30} color={colors.primary} /><Text style={styles.emptyTitle}>Aun no hay capacitaciones</Text><Text style={styles.empty}>Las guias publicadas por el equipo apareceran aqui.</Text></View> : null}
     <View style={styles.list}>{trainings.map((training) => <View key={training.id} style={[styles.training, !training.active && styles.trainingInactive]}>
       <View style={styles.trainingIcon}><BookOpenCheck size={23} color={colors.primary} /></View>
-      <View style={styles.trainingInfo}><View style={styles.trainingTop}><Text style={styles.trainingTitle}>{training.title}</Text>{training.completedAt ? <View style={styles.completed}><CheckCircle2 size={14} color={colors.success} /><Text style={styles.completedText}>Completada</Text></View> : null}</View>{training.description ? <Text style={styles.trainingDescription}>{training.description}</Text> : null}<Text style={styles.trainingMeta}>{training.active ? 'Material disponible' : 'Material archivado'}</Text></View>
-      <View style={styles.actions}><Pressable onPress={() => { void openResource(training); }} style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}><ExternalLink size={16} color={colors.primary} /><Text style={styles.openText}>Abrir guia</Text></Pressable>{!training.completedAt && training.active ? <Pressable onPress={() => { void complete(training); }} style={({ pressed }) => [styles.completeButton, pressed && styles.pressed]}><Text style={styles.completeText}>Marcar completada</Text></Pressable> : null}</View>
+      <View style={styles.trainingInfo}><View style={styles.trainingTop}><Text style={styles.trainingTitle}>{training.title}</Text>{!canManage && training.completedAt ? <View style={styles.completed}><CheckCircle2 size={14} color={colors.success} /><Text style={styles.completedText}>Completada</Text></View> : null}</View>{training.description ? <Text style={styles.trainingDescription}>{training.description}</Text> : null}<Text style={styles.trainingMeta}>{training.active ? 'Material disponible' : 'Material archivado'}</Text></View>
+      <View style={styles.actions}><Pressable onPress={() => { void openResource(training); }} style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}><ExternalLink size={16} color={colors.primary} /><Text style={styles.openText}>Abrir guia</Text></Pressable>{canManage ? <Pressable onPress={() => { void updateStatus(training); }} style={({ pressed }) => [styles.statusButton, training.active ? styles.disableButton : styles.enableButton, pressed && styles.pressed]}>{training.active ? <Archive size={15} color={colors.primary} /> : <RotateCcw size={15} color={colors.success} />}<Text style={[styles.statusText, !training.active && styles.enableText]}>{training.active ? 'Deshabilitar' : 'Volver a habilitar'}</Text></Pressable> : null}{!canManage && !training.completedAt && training.active ? <Pressable onPress={() => { void complete(training); }} style={({ pressed }) => [styles.completeButton, pressed && styles.pressed]}><Text style={styles.completeText}>Marcar completada</Text></Pressable> : null}</View>
     </View>)}</View>
     <ExamPanel canManage={canManage} />
   </ScrollView>;
@@ -133,6 +145,11 @@ const styles = StyleSheet.create({
   openText: { color: colors.primary, fontWeight: '900', fontSize: 13 },
   completeButton: { borderRadius: radius.md, backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   completeText: { color: colors.onPrimary, fontWeight: '900', fontSize: 12 },
+  statusButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  disableButton: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  enableButton: { borderColor: colors.success, backgroundColor: '#E8F7F4' },
+  statusText: { color: colors.primary, fontWeight: '900', fontSize: 12 },
+  enableText: { color: colors.success },
   emptyCard: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   emptyTitle: { color: colors.text, fontWeight: '900', fontSize: 17 },
   empty: { color: colors.muted, textAlign: 'center' },

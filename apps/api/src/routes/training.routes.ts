@@ -61,6 +61,39 @@ trainingRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req,
   }
 });
 
+trainingRouter.patch('/:id/status', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(400).json({ message: 'Capacitacion invalida.' });
+      return;
+    }
+    if (typeof req.body?.active !== 'boolean') {
+      res.status(400).json({ message: 'El estado de la capacitacion es requerido.' });
+      return;
+    }
+
+    const training = await TrainingModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: { active: req.body.active } },
+      { new: true },
+    );
+    if (!training) {
+      res.status(404).json({ message: 'Capacitacion no encontrada.' });
+      return;
+    }
+
+    res.json({
+      id: training.id,
+      title: training.title,
+      description: training.description,
+      resourceUrl: training.resourceUrl,
+      active: training.active,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 trainingRouter.post('/:id/complete', requireAuth, async (req: AuthenticatedRequest, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) {

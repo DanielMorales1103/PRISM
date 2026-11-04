@@ -119,6 +119,31 @@ examRouter.patch('/:id', requireAuth, requireRoles('admin', 'jefe'), async (req,
   }
 });
 
+examRouter.patch('/:id/status', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(400).json({ message: 'Examen invalido.' });
+      return;
+    }
+    if (typeof req.body?.active !== 'boolean') {
+      res.status(400).json({ message: 'El estado del examen es requerido.' });
+      return;
+    }
+    const exam = await ExamModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: { active: req.body.active } },
+      { new: true },
+    );
+    if (!exam) {
+      res.status(404).json({ message: 'Examen no encontrado.' });
+      return;
+    }
+    res.json(serializeExam(exam, true));
+  } catch (error) {
+    next(error);
+  }
+});
+
 examRouter.get('/:id/results', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) {
@@ -158,7 +183,7 @@ examRouter.get('/:id/results', requireAuth, requireRoles('admin', 'jefe'), async
   }
 });
 
-examRouter.post('/:id/submit', requireAuth, async (req: AuthenticatedRequest, res, next) => {
+examRouter.post('/:id/submit', requireAuth, requireRoles('visitador'), async (req: AuthenticatedRequest, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) {
       res.status(400).json({ message: 'Examen invalido.' });
