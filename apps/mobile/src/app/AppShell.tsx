@@ -1,6 +1,6 @@
 import type { Product, VisitPlan } from '@prism/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { AdminScreen } from '../screens/AdminScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
@@ -20,6 +20,8 @@ import { ProductSelectionScreen } from '../screens/ProductSelectionScreen';
 import { SplashScreen } from '../screens/SplashScreen';
 import { ProductPresentationScreen } from '../screens/ProductPresentationScreen';
 import { TrainingScreen } from '../screens/TrainingScreen';
+import { BillingScreen } from '../screens/BillingScreen';
+import { LibraryScreen } from '../screens/LibraryScreen';
 import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
 import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
 import { Sidebar } from '../components/Sidebar';
@@ -70,6 +72,7 @@ export function AppShell() {
   const [planCandidates, setPlanCandidates] = useState<VisitPlan[]>([]);
   const [candidateDoctor, setCandidateDoctor] = useState<VisitDoctorSnapshot | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [examActive, setExamActive] = useState(false);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
 
@@ -323,7 +326,7 @@ export function AppShell() {
       case 'admin-cycles':
         return <CyclesScreen />;
       case 'dashboard':
-        return <KpiDashboardScreen onBack={() => setScreen('home')} />;
+        return <KpiDashboardScreen currentUser={user} onBack={() => setScreen('home')} />;
       case 'planner':
         return <AgendaScreen currentUser={user} onBack={() => setScreen('home')} onStartVisit={continueVisit} />;
       case 'new-visit':
@@ -414,7 +417,9 @@ export function AppShell() {
       case 'visitadores':
         return <VisitadoresScreen />;
       case 'coaching':
-        return <TrainingScreen currentUser={user} />;
+        return <TrainingScreen currentUser={user} onExamActiveChange={setExamActive} />;
+      case 'library':
+        return <LibraryScreen />;
       case 'map':
         return <MapScreen currentUser={user} />;
       case 'visits':
@@ -422,7 +427,9 @@ export function AppShell() {
       case 'marketing':
         return <MarketingScreen />;
       case 'billing':
-        return <ModuleScreen role={user.role} type={screen} />;
+        return <BillingScreen currentUser={user} />;
+      case 'invoicing':
+        return <BillingScreen currentUser={user} view="invoicing" />;
       case 'home':
       default:
         return <HomeScreen user={user} onNavigate={navigateFromHome} onStartVisit={continueVisit} />;
@@ -430,11 +437,12 @@ export function AppShell() {
   };
 
   const immersivePresentation = screen === 'interactive-presentation';
+  const immersiveMode = immersivePresentation || examActive;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.shell}>
-        {!immersivePresentation && !compactNav && sidebarOpen ? (
+        {!immersiveMode && !compactNav && sidebarOpen ? (
           <Sidebar
             active={screen}
             compact={false}
@@ -445,7 +453,7 @@ export function AppShell() {
           />
         ) : null}
         <View style={styles.workspace}>
-          {!immersivePresentation && (!sidebarOpen || compactNav) ? <View style={styles.navBar}>
+          {!immersiveMode && (!sidebarOpen || compactNav) ? <View style={styles.navBar}>
             <Pressable
               accessibilityLabel={sidebarOpen ? 'Ocultar menu' : 'Abrir menu'}
               onPress={() => setSidebarOpen((open) => !open)}
@@ -453,12 +461,13 @@ export function AppShell() {
             >
               <Menu size={22} color={colors.text} />
             </Pressable>
+            <Image source={require('../../assets/prism-logo-full.png')} resizeMode="contain" style={styles.navLogo} accessibilityLabel="PriSm, adding life to living" />
           </View> : null}
           <View style={styles.content}>{renderScreen()}</View>
         </View>
       </View>
 
-      <Modal transparent visible={compactNav && sidebarOpen} animationType="fade" onRequestClose={() => setSidebarOpen(false)}>
+      <Modal transparent visible={!examActive && compactNav && sidebarOpen} animationType="fade" onRequestClose={() => setSidebarOpen(false)}>
         <View style={styles.drawerOverlay}>
           <Pressable accessibilityLabel="Cerrar menu" onPress={() => setSidebarOpen(false)} style={styles.drawerDismiss} />
           <View style={styles.drawer}>
@@ -540,11 +549,14 @@ const styles = StyleSheet.create({
   navBar: {
     height: 52,
     paddingHorizontal: 12,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  navLogo: { width: 108, height: 46 },
   menuButton: {
     width: 36,
     height: 36,

@@ -6,26 +6,41 @@ import { api, TrainingItem } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 import { ExamPanel } from '../components/ExamPanel';
+import type { Cycle } from '@prism/shared';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
-interface TrainingScreenProps { currentUser: SessionUser; }
+interface TrainingScreenProps { currentUser: SessionUser; onExamActiveChange?: (active: boolean) => void; }
 
-export function TrainingScreen({ currentUser }: TrainingScreenProps) {
+export function TrainingScreen({ currentUser, onExamActiveChange }: TrainingScreenProps) {
   const canManage = currentUser.role === 'admin' || currentUser.role === 'jefe';
   const [trainings, setTrainings] = useState<TrainingItem[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [cycleId, setCycleId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [resourceUrl, setResourceUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [examActive, setExamActive] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
+
+  const handleExamActiveChange = (active: boolean) => {
+    setExamActive(active);
+    onExamActiveChange?.(active);
+  };
 
   useEffect(() => {
     let live = true;
     void loadToken().then((token) => {
       if (!token) throw new Error('Sesion no disponible.');
-      return api.getTrainings(token);
-    }).then((items) => {
-      if (live) setTrainings(items);
+      return Promise.all([api.getTrainings(token), api.getCatalogs()]);
+    }).then(([items, catalogs]) => {
+      if (live) {
+        setTrainings(items);
+        setCycles([...catalogs.cycles].sort((a, b) => b.number - a.number));
+        setCycleId(catalogs.cycles.find((cycle) => cycle.active)?.id ?? catalogs.cycles.at(-1)?.id ?? '');
+      }
     }).catch((error) => {
       if (live) setMessage(error instanceof Error ? error.message : 'No se pudieron cargar las capacitaciones.');
     }).finally(() => { if (live) setLoading(false); });
@@ -43,12 +58,12 @@ export function TrainingScreen({ currentUser }: TrainingScreenProps) {
     try {
       const token = await loadToken();
       if (!token) throw new Error('Sesion no disponible.');
-      const training = await api.createTraining(token, { title: title.trim(), description: description.trim(), resourceUrl: resourceUrl.trim() });
+      const training = await api.createTraining(token, { cycleId: cycleId || undefined, title: title.trim(), description: description.trim(), resourceUrl: resourceUrl.trim() });
       setTrainings((current) => [training, ...current]);
       setTitle('');
       setDescription('');
       setResourceUrl('');
-      setMessage('Capacitacion publicada.');
+      setConfirmation('Capacitacion publicada.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo publicar la capacitacion.');
     } finally {
@@ -82,17 +97,31 @@ export function TrainingScreen({ currentUser }: TrainingScreenProps) {
       if (!token) throw new Error('Sesion no disponible.');
       const updated = await api.updateTrainingStatus(token, training.id, !training.active);
       setTrainings((current) => current.map((item) => item.id === training.id ? { ...item, active: updated.active } : item));
-      setMessage(updated.active ? 'Capacitacion habilitada.' : 'Capacitacion deshabilitada.');
+      setConfirmation(updated.active ? 'Capacitacion habilitada.' : 'Capacitacion deshabilitada.');
     } catch (error) {
       Alert.alert('No se pudo cambiar el estado', error instanceof Error ? error.message : 'Intenta nuevamente.');
     }
   };
 
-  return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  const updateCycle = async (training: TrainingItem, nextCycleId: string) => {
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesion no disponible.');
+      const updated = await api.updateTrainingCycle(token, training.id, nextCycleId || undefined);
+      setTrainings((current) => current.map((item) => item.id === training.id ? { ...item, cycleId: updated.cycleId } : item));
+      setConfirmation('Ciclo de la capacitacion actualizado.');
+    } catch (error) {
+      Alert.alert('No se pudo asignar el ciclo', error instanceof Error ? error.message : 'Intenta nuevamente.');
+    }
+  };
+
+  return <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    {!examActive ? <View style={styles.trainingContent}>
     <View style={styles.header}><View><Text style={styles.title}>Capacitaciones</Text><Text style={styles.subtitle}>{canManage ? 'Publica guias en Google Drive para el equipo.' : 'Material de estudio disponible para tu trabajo de visita.'}</Text></View>{!canManage ? <View style={styles.counter}><BookOpenCheck size={19} color={colors.primary} /><Text style={styles.counterText}>{completedCount}/{trainings.length} completadas</Text></View> : null}</View>
 
     {canManage && <View style={styles.publishCard}>
       <Text style={styles.cardTitle}>Nueva capacitacion</Text>
+      <View style={styles.field}><Text style={styles.label}>Ciclo</Text><View style={styles.cycleOptions}>{cycles.map((cycle) => <Pressable key={cycle.id} onPress={() => setCycleId(cycle.id)} style={[styles.cycleOption, cycleId === cycle.id && styles.cycleOptionActive]}><Text style={[styles.cycleOptionText, cycleId === cycle.id && styles.cycleOptionTextActive]}>{cycle.name}</Text></Pressable>)}</View></View>
       <View style={styles.formRow}><View style={styles.field}><Text style={styles.label}>Titulo</Text><TextInput value={title} onChangeText={setTitle} placeholder="Ej. Portafolio de dermatologia" placeholderTextColor="#9CA3AF" style={styles.input} /></View><View style={styles.field}><Text style={styles.label}>Enlace de Google Drive</Text><TextInput value={resourceUrl} onChangeText={setResourceUrl} autoCapitalize="none" placeholder="https://drive.google.com/..." placeholderTextColor="#9CA3AF" style={styles.input} /></View></View>
       <View style={styles.field}><Text style={styles.label}>Descripcion</Text><TextInput value={description} onChangeText={setDescription} multiline placeholder="Opcional" placeholderTextColor="#9CA3AF" style={[styles.input, styles.textArea]} /></View>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -104,15 +133,17 @@ export function TrainingScreen({ currentUser }: TrainingScreenProps) {
     {!loading && trainings.length === 0 ? <View style={styles.emptyCard}><BookOpenCheck size={30} color={colors.primary} /><Text style={styles.emptyTitle}>Aun no hay capacitaciones</Text><Text style={styles.empty}>Las guias publicadas por el equipo apareceran aqui.</Text></View> : null}
     <View style={styles.list}>{trainings.map((training) => <View key={training.id} style={[styles.training, !training.active && styles.trainingInactive]}>
       <View style={styles.trainingIcon}><BookOpenCheck size={23} color={colors.primary} /></View>
-      <View style={styles.trainingInfo}><View style={styles.trainingTop}><Text style={styles.trainingTitle}>{training.title}</Text>{!canManage && training.completedAt ? <View style={styles.completed}><CheckCircle2 size={14} color={colors.success} /><Text style={styles.completedText}>Completada</Text></View> : null}</View>{training.description ? <Text style={styles.trainingDescription}>{training.description}</Text> : null}<Text style={styles.trainingMeta}>{training.active ? 'Material disponible' : 'Material archivado'}</Text></View>
+      <View style={styles.trainingInfo}><View style={styles.trainingTop}><Text style={styles.trainingTitle}>{training.title}</Text>{!canManage && training.completedAt ? <View style={styles.completed}><CheckCircle2 size={14} color={colors.success} /><Text style={styles.completedText}>Completada</Text></View> : null}</View>{training.description ? <Text style={styles.trainingDescription}>{training.description}</Text> : null}<Text style={styles.trainingMeta}>{cycles.find((cycle) => cycle.id === training.cycleId)?.name ?? 'Sin ciclo asignado'} · {training.active ? 'Material disponible' : 'Material archivado'}</Text>{canManage ? <View style={styles.trainingCycles}>{cycles.map((cycle) => <Pressable key={cycle.id} onPress={() => { void updateCycle(training, cycle.id); }} style={[styles.trainingCycle, training.cycleId === cycle.id && styles.trainingCycleActive]}><Text style={[styles.trainingCycleText, training.cycleId === cycle.id && styles.trainingCycleTextActive]}>{cycle.name}</Text></Pressable>)}</View> : null}</View>
       <View style={styles.actions}><Pressable onPress={() => { void openResource(training); }} style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}><ExternalLink size={16} color={colors.primary} /><Text style={styles.openText}>Abrir guia</Text></Pressable>{canManage ? <Pressable onPress={() => { void updateStatus(training); }} style={({ pressed }) => [styles.statusButton, training.active ? styles.disableButton : styles.enableButton, pressed && styles.pressed]}>{training.active ? <Archive size={15} color={colors.primary} /> : <RotateCcw size={15} color={colors.success} />}<Text style={[styles.statusText, !training.active && styles.enableText]}>{training.active ? 'Deshabilitar' : 'Volver a habilitar'}</Text></Pressable> : null}{!canManage && !training.completedAt && training.active ? <Pressable onPress={() => { void complete(training); }} style={({ pressed }) => [styles.completeButton, pressed && styles.pressed]}><Text style={styles.completeText}>Marcar completada</Text></Pressable> : null}</View>
     </View>)}</View>
-    <ExamPanel canManage={canManage} />
-  </ScrollView>;
+    </View> : null}
+    <ExamPanel canManage={canManage} cycles={cycles} onExamActiveChange={handleExamActiveChange} />
+  </ScrollView><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>;
 }
 
 const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.lg },
+  trainingContent: { gap: spacing.lg },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.lg, flexWrap: 'wrap' },
   title: { color: colors.text, fontSize: 28, fontWeight: '900' },
   subtitle: { color: colors.muted, fontSize: 16, marginTop: 3 },
@@ -123,6 +154,11 @@ const styles = StyleSheet.create({
   formRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   field: { flex: 1, minWidth: 250, gap: 6 },
   label: { color: colors.text, fontSize: 13, fontWeight: '900' },
+  cycleOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  cycleOption: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: spacing.md, backgroundColor: colors.surface },
+  cycleOptionActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  cycleOptionText: { color: colors.muted, fontSize: 13, fontWeight: '800' },
+  cycleOptionTextActive: { color: colors.primary },
   input: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, color: colors.text, paddingHorizontal: spacing.md },
   textArea: { minHeight: 82, paddingVertical: spacing.sm, textAlignVertical: 'top' },
   message: { color: colors.success, fontWeight: '800' },
@@ -138,6 +174,11 @@ const styles = StyleSheet.create({
   trainingTitle: { flex: 1, color: colors.text, fontSize: 17, fontWeight: '900' },
   trainingDescription: { color: colors.muted, fontSize: 14 },
   trainingMeta: { color: colors.muted, fontSize: 12, fontWeight: '800' },
+  trainingCycles: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
+  trainingCycle: { minHeight: 28, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, paddingHorizontal: spacing.sm },
+  trainingCycleActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  trainingCycleText: { color: colors.muted, fontSize: 10, fontWeight: '800' },
+  trainingCycleTextActive: { color: colors.primary },
   completed: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E8F7F4', borderRadius: radius.sm, paddingHorizontal: 7, paddingVertical: 4 },
   completedText: { color: colors.success, fontSize: 11, fontWeight: '900' },
   actions: { alignItems: 'flex-end', gap: spacing.sm },

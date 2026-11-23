@@ -56,6 +56,7 @@ export interface Product {
   name: string;
   line: string;
   presentation: string;
+  unitPrice: number;
   composition?: string;
   dosage?: string;
   details?: string;

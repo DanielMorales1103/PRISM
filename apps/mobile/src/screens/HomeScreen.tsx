@@ -12,13 +12,12 @@ import {
   PackagePlus,
   PlusCircle,
   TrendingUp,
-  Trophy,
   Users,
   RefreshCw,
 } from 'lucide-react-native';
 import { ActionCard } from '../components/ActionCard';
 import { MetricCard } from '../components/MetricCard';
-import { canManageCatalogs } from '../app/permissions';
+import { canAccessScreen, canManageCatalogs } from '../app/permissions';
 import { AppScreen, SessionUser, VisitDoctorSnapshot } from '../app/types';
 import { colors, radius, spacing } from '../theme/theme';
 import { api } from '../services/api';
@@ -121,13 +120,11 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
         ? 'Consulta indicadores consolidados y administra configuraciones del CRM.'
         : plans.length ? `Tienes ${plans.length} visita${plans.length === 1 ? '' : 's'} planificada${plans.length === 1 ? '' : 's'} para hoy.` : 'No tienes visitas planificadas para hoy.';
   const quickActions = [
-    { title: 'Mapa', subtitle: 'Optimiza tu ruta', icon: <MapIcon size={34} color={colors.primary} />, screen: 'map' as const, visible: !isBilling },
-    { title: 'Ranking', subtitle: 'Top visitadores', icon: <Trophy size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: isSupervisor || isExecutive },
-    { title: 'Historial', subtitle: 'CRM medico', icon: <Activity size={34} color={colors.text} />, screen: 'visits' as const, visible: !isBilling },
-    { title: 'Reportes', subtitle: 'Analitica real', icon: <TrendingUp size={34} color={colors.primary} />, screen: 'dashboard' as const, visible: true },
-    { title: 'Clientes', subtitle: 'Medicos y farmacias', icon: <Users size={34} color={colors.primary} />, screen: 'clients' as const, visible: isBilling },
-    { title: 'Cobros', subtitle: 'Ventas y cartera', icon: <CreditCard size={34} color={colors.primary} />, screen: 'billing' as const, visible: isBilling },
-  ].filter((action) => action.visible).slice(0, 4);
+    { title: 'Mapa', subtitle: 'Optimiza tu ruta', icon: <MapIcon size={34} color={colors.primary} />, screen: 'map' as const },
+    { title: 'Historial', subtitle: 'CRM medico', icon: <Activity size={34} color={colors.text} />, screen: 'visits' as const },
+    { title: 'Reportes', subtitle: 'Analitica real', icon: <TrendingUp size={34} color={colors.primary} />, screen: 'dashboard' as const },
+    { title: 'Devoluciones', subtitle: 'Ventas y cobros', icon: <CreditCard size={34} color={colors.primary} />, screen: 'billing' as const },
+  ].filter((action) => canAccessScreen(user.role, action.screen));
 
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -182,8 +179,8 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
       </View>
 
       <View style={[styles.secondaryActions, wide && styles.secondaryActionsWide]}>
-        {!isBilling && <ActionCard title="Marketing" subtitle="Reja promocional y muestras." icon={<Megaphone size={32} color={colors.primary} />} onPress={() => onNavigate('marketing')} />}
-        {!isBilling && <ActionCard title="Capacitaciones" subtitle="Guías y material de estudio." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
+        {canAccessScreen(user.role, 'marketing') && <ActionCard title="Marketing" subtitle="Reja promocional y muestras." icon={<Megaphone size={32} color={colors.primary} />} onPress={() => onNavigate('marketing')} />}
+        {canAccessScreen(user.role, 'coaching') && <ActionCard title="Capacitaciones" subtitle="Guías y material de estudio." icon={<BookOpenCheck size={32} color={colors.primary} />} onPress={() => onNavigate('coaching')} />}
         {canAdminister && (
           <ActionCard
             title="Administracion"

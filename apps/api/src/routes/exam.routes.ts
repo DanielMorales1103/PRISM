@@ -4,6 +4,7 @@ import { AuthenticatedRequest, requireAuth, requireRoles } from '../middleware/a
 import { ExamAttemptModel } from '../models/exam-attempt.model.js';
 import { ExamModel } from '../models/exam.model.js';
 import { UserModel } from '../models/user.model.js';
+import { CycleModel } from '../models/cycle.model.js';
 
 export const examRouter = Router();
 
@@ -15,6 +16,13 @@ function canManageExams(role: string | undefined) {
 
 function normalizeAnswer(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+async function parseCycleId(value: unknown) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !Types.ObjectId.isValid(value)) throw new Error('Ciclo invalido.');
+  if (!await CycleModel.exists({ _id: value })) throw new Error('El ciclo seleccionado no existe.');
+  return new Types.ObjectId(value);
 }
 
 function parseQuestion(value: unknown) {
@@ -39,10 +47,13 @@ function parseQuestion(value: unknown) {
 function serializeExam(exam: any, includeAnswers: boolean, latestAttempt?: any) {
   return {
     id: exam._id.toString(),
+    cycleId: exam.cycleId?.toString(),
     title: exam.title,
     description: exam.description,
     passingScore: exam.passingScore,
+    maxAttempts: exam.maxAttempts ?? 1,
     active: exam.active,
+    createdAt: exam.createdAt,
     questions: exam.questions.map((question: any) => ({
       id: question._id.toString(),
       prompt: question.prompt,
@@ -62,8 +73,9 @@ examRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next) =>
       ExamAttemptModel.find({ userId: new Types.ObjectId(req.auth!.sub) }).sort({ submittedAt: -1 }).lean(),
     ]);
     const latestByExam = new Map<string, any>();
-    attempts.forEach((attempt) => { if (!latestByExam.has(attempt.examId.toString())) latestByExam.set(attempt.examId.toString(), attempt); });
-    res.json(exams.map((exam) => serializeExam(exam, manager, latestByExam.get(exam._id.toString()))));
+    const attemptsByExam = new Map<string, number>();
+    attempts.forEach((attempt) => { const id = attempt.examId.toString(); attemptsByExam.set(id, (attemptsByExam.get(id) ?? 0) + 1); if (!latestByExam.has(id)) latestByExam.set(id, attempt); });
+    res.json(exams.map((exam) => ({ ...serializeExam(exam, manager, latestByExam.get(exam._id.toString())), attemptCount: attemptsByExam.get(exam._id.toString()) ?? 0 })));
   } catch (error) {
     next(error);
   }
@@ -71,15 +83,17 @@ examRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next) =>
 
 examRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
   try {
+    const cycleId = await parseCycleId(req.body?.cycleId);
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
     const passingScore = Number(req.body?.passingScore ?? 70);
+    const maxAttempts = Number(req.body?.maxAttempts ?? 1);
     const questions = Array.isArray(req.body?.questions) ? req.body.questions.map(parseQuestion) : [];
-    if (!title || !questions.length || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) {
+    if (!title || !questions.length || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) {
       res.status(400).json({ message: 'Titulo, preguntas y nota minima valida son requeridos.' });
       return;
     }
-    const exam = await ExamModel.create({ title, description, passingScore, questions, active: true });
+    const exam = await ExamModel.create({ cycleId, title, description, passingScore, maxAttempts, questions, active: true });
     res.status(201).json(serializeExam(exam, true));
   } catch (error) {
     if (error instanceof Error) {
@@ -96,15 +110,17 @@ examRouter.patch('/:id', requireAuth, requireRoles('admin', 'jefe'), async (req,
       res.status(400).json({ message: 'Examen invalido.' });
       return;
     }
+    const cycleId = await parseCycleId(req.body?.cycleId);
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
     const passingScore = Number(req.body?.passingScore ?? 70);
+    const maxAttempts = Number(req.body?.maxAttempts ?? 1);
     const questions = Array.isArray(req.body?.questions) ? req.body.questions.map(parseQuestion) : [];
-    if (!title || !questions.length || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100) {
+    if (!title || !questions.length || !Number.isFinite(passingScore) || passingScore < 0 || passingScore > 100 || !Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 20) {
       res.status(400).json({ message: 'Titulo, preguntas y nota minima valida son requeridos.' });
       return;
     }
-    const exam = await ExamModel.findByIdAndUpdate(req.params.id, { $set: { title, description, passingScore, questions } }, { new: true });
+    const exam = await ExamModel.findByIdAndUpdate(req.params.id, { $set: { cycleId, title, description, passingScore, maxAttempts, questions } }, { new: true });
     if (!exam) {
       res.status(404).json({ message: 'Examen no encontrado.' });
       return;
@@ -192,6 +208,11 @@ examRouter.post('/:id/submit', requireAuth, requireRoles('visitador'), async (re
     const exam = await ExamModel.findOne({ _id: req.params.id, active: true }).lean();
     if (!exam) {
       res.status(404).json({ message: 'Examen no disponible.' });
+      return;
+    }
+    const attemptCount = await ExamAttemptModel.countDocuments({ examId: exam._id, userId: new Types.ObjectId(req.auth!.sub) });
+    if (attemptCount >= (exam.maxAttempts ?? 1)) {
+      res.status(409).json({ message: `Ya alcanzaste el límite de ${exam.maxAttempts ?? 1} intento(s) para este examen.` });
       return;
     }
     const submitted = new Map<string, Record<string, unknown>>();

@@ -116,6 +116,7 @@ export async function seedInitialData(options: { adminName: string; adminEmail: 
       await ProductModel.create({ ...productData, active: true });
     }
   }
+  await ProductModel.updateMany({ unitPrice: { $exists: false } }, { $set: { unitPrice: 100 } });
 
   for (let number = 1; number <= 5; number += 1) {
     await CycleModel.updateOne(

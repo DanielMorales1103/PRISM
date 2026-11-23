@@ -86,6 +86,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
     name: '',
     line: '',
     presentation: '',
+    unitPrice: '',
     composition: '',
     dosage: '',
     details: '',
@@ -95,6 +96,11 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
   const [formMessageType, setFormMessageType] = useState<'success' | 'error'>('success');
   const [submittingUser, setSubmittingUser] = useState(false);
   const [submittingProduct, setSubmittingProduct] = useState(false);
+  const [editingPriceId, setEditingPriceId] = useState('');
+  const [priceDraft, setPriceDraft] = useState('');
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [priceMessage, setPriceMessage] = useState('');
+  const [priceError, setPriceError] = useState(false);
   const [createdUserModal, setCreatedUserModal] = useState<CreatedUserModal | null>(null);
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UserProfile | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
@@ -294,15 +300,16 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
       name: productForm.name.trim(),
       line: productForm.line.trim(),
       presentation: productForm.presentation.trim(),
+      unitPrice: Number(productForm.unitPrice.replace(',', '.')),
       composition: productForm.composition.trim(),
       dosage: productForm.dosage.trim(),
       details: productForm.details.trim(),
       imageUrl: productForm.imageUrl.trim(),
     };
 
-    if (!nextProductForm.name || !nextProductForm.line || !nextProductForm.presentation) {
+    if (!nextProductForm.name || !nextProductForm.line || !nextProductForm.presentation || !Number.isFinite(nextProductForm.unitPrice) || nextProductForm.unitPrice <= 0 || Number(nextProductForm.unitPrice.toFixed(2)) !== nextProductForm.unitPrice) {
       setFormMessageType('error');
-      setFormMessage('Completa nombre, linea y presentacion.');
+      setFormMessage('Completa nombre, línea, presentación y precio unitario válido.');
       return;
     }
 
@@ -327,6 +334,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
         name: '',
         line: '',
         presentation: '',
+        unitPrice: '',
         composition: '',
         dosage: '',
         details: '',
@@ -341,6 +349,23 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
     } finally {
       setSubmittingProduct(false);
     }
+  };
+
+  const saveProductPrice = async (product: Product) => {
+    const unitPrice = Number(priceDraft.replace(',', '.'));
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || Number(unitPrice.toFixed(2)) !== unitPrice) {
+      setPriceError(true); setPriceMessage('Ingresa un precio válido con hasta dos decimales.'); return;
+    }
+    setSavingPrice(true); setPriceMessage('');
+    try {
+      const token = await loadToken();
+      if (!token) throw new Error('Sesión no disponible.');
+      const updated = await api.updateProductPrice(token, product.id, unitPrice);
+      setProducts((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setEditingPriceId(''); setPriceError(false); setPriceMessage(`Precio actualizado: ${updated.name}`);
+    } catch (error) {
+      setPriceError(true); setPriceMessage(error instanceof Error ? error.message : 'No se pudo actualizar el precio.');
+    } finally { setSavingPrice(false); }
   };
 
   const deactivateUser = async () => {
@@ -471,6 +496,10 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
                 style={styles.input}
               />
             </View>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Precio unitario (Q)</Text>
+              <TextInput value={productForm.unitPrice} onChangeText={(unitPrice) => setProductForm((currentForm) => ({ ...currentForm, unitPrice }))} keyboardType="decimal-pad" placeholder="100.00" placeholderTextColor="#9CA3AF" style={styles.input} />
+            </View>
           </View>
 
           <View style={styles.formGrid}>
@@ -573,6 +602,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
             </View>
             <Text style={styles.userCount}>{products.filter((product) => product.active).length} activos</Text>
           </View>
+          {priceMessage ? <Text style={[styles.formMessage, priceError && styles.formMessageError]}>{priceMessage}</Text> : null}
 
           <View style={styles.productList}>
             {products.length === 0 && (
@@ -592,6 +622,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
                 </View>
                 <Text style={styles.productLine}>{product.line}</Text>
                 <Text style={styles.productPresentation}>{product.presentation}</Text>
+                {editingPriceId === product.id && canManageUsers(currentUser.role) ? <View style={styles.priceEdit}><TextInput value={priceDraft} onChangeText={setPriceDraft} keyboardType="decimal-pad" style={styles.priceInput} /><Pressable disabled={savingPrice} onPress={() => { void saveProductPrice(product); }} style={styles.priceAction}><Text style={styles.priceActionText}>{savingPrice ? '...' : 'Guardar'}</Text></Pressable><Pressable onPress={() => setEditingPriceId('')} style={styles.priceAction}><Text style={styles.priceActionText}>Cancelar</Text></Pressable></View> : canManageUsers(currentUser.role) ? <Pressable onPress={() => { setEditingPriceId(product.id); setPriceDraft(String(product.unitPrice ?? 100)); setPriceMessage(''); }} style={styles.priceAction}><Text style={styles.priceActionText}>Q {Number(product.unitPrice ?? 100).toFixed(2)} · Editar</Text></Pressable> : <Text style={styles.productPresentation}>Q {Number(product.unitPrice ?? 100).toFixed(2)}</Text>}
                 <Text style={[styles.userStatus, product.active ? styles.userStatusActive : styles.userStatusInactive]}>
                   {product.active ? 'Activo' : 'Inactivo'}
                 </Text>
@@ -1161,6 +1192,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  priceEdit: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.xs },
+  priceInput: { width: 90, minHeight: 38, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: spacing.sm, color: colors.text },
+  priceAction: { minHeight: 38, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  priceActionText: { color: colors.primary, fontSize: 12, fontWeight: '800' },
   userName: {
     color: colors.text,
     fontSize: 15,

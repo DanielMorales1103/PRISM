@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ArrowLeft, Check, ChevronRight, Filter, Info, Search } from 'lucide-react-native';
 import { api } from '../services/api';
+import { loadToken } from '../services/session';
 import { ProductPreparationModal } from '../components/ProductPreparationModal';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 
@@ -18,6 +19,7 @@ const fallbackImage = 'https://images.unsplash.com/photo-1587854692152-cbe660dbd
 
 export function ProductSelectionScreen({ onBack, initialProductIds = [], onStartPrepared, productsOverride, productImageUris }: ProductSelectionScreenProps) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [onlineImageUris, setOnlineImageUris] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedLines, setSelectedLines] = useState<string[]>([]);
@@ -39,14 +41,17 @@ export function ProductSelectionScreen({ onBack, initialProductIds = [], onStart
 
     let mounted = true;
 
-    void api
-      .getProducts()
-      .then((nextProducts) => {
+    void Promise.all([
+      api.getProducts(),
+      loadToken().then((token) => token ? api.getProductCovers(token).catch(() => ({ covers: [] })) : ({ covers: [] })),
+    ])
+      .then(([nextProducts, coverResponse]) => {
         if (!mounted) {
           return;
         }
 
         setProducts(nextProducts.filter((product) => product.active));
+        setOnlineImageUris(Object.fromEntries(coverResponse.covers.map((cover) => [cover.productId, cover.url])));
         setStatus('');
       })
       .catch(() => {
@@ -158,7 +163,7 @@ export function ProductSelectionScreen({ onBack, initialProductIds = [], onStart
 
             return <View key={product.id} style={[styles.card, { width: cardWidth }]}> 
               <View style={styles.imageWrap}>
-                <Image source={{ uri: productImageUris?.[product.id] ?? product.imageUrl ?? fallbackImage }} style={styles.image} />
+                <Image source={{ uri: productImageUris?.[product.id] ?? onlineImageUris[product.id] ?? product.imageUrl ?? fallbackImage }} style={styles.image} resizeMode="cover" />
                 <View style={styles.linePill}>
                   <Text style={styles.lineText}>{product.line}</Text>
                 </View>

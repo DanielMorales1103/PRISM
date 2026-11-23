@@ -3,8 +3,10 @@ import {
   BookOpenCheck,
   CalendarRange,
   CreditCard,
+  FilePlus2,
   History,
   Home,
+  Library,
   LogOut,
   Map,
   Megaphone,
@@ -16,7 +18,7 @@ import {
   UserRoundCheck,
 } from 'lucide-react-native';
 import { ComponentType } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { canAccessScreen } from '../app/permissions';
 import { getRoleLabel } from '../app/roleLabels';
 import { AppRole, AppScreen } from '../app/types';
@@ -40,7 +42,9 @@ const items: Array<{ screen: AppScreen; label: string; icon: ComponentType<{ siz
   { screen: 'visits', label: 'Historial CRM', icon: History },
   { screen: 'marketing', label: 'Marketing', icon: Megaphone },
   { screen: 'coaching', label: 'Capacitaciones', icon: BookOpenCheck },
+  { screen: 'library', label: 'Biblioteca', icon: Library },
   { screen: 'billing', label: 'Ventas/Cobros', icon: CreditCard },
+  { screen: 'invoicing', label: 'Facturación', icon: FilePlus2 },
   { screen: 'admin-users', label: 'Usuarios', icon: Settings },
   { screen: 'admin-products', label: 'Productos', icon: PackagePlus },
   { screen: 'admin-cycles', label: 'Ciclos', icon: CalendarRange },
@@ -53,8 +57,7 @@ export function Sidebar({ active, compact, role, onNavigate, onLogout, onCollaps
     <View style={[styles.sidebar, compact && styles.compact]}>
       <View style={styles.brandRow}>
         <View style={styles.logoBlock}>
-          <Text style={styles.logo}>PRISM</Text>
-          {!compact && <Text style={styles.tagline}>MedConnect</Text>}
+          <Image source={require('../../assets/prism-logo-full.png')} resizeMode="contain" style={styles.logoImage} accessibilityLabel="PriSm, adding life to living" />
           {!compact && <Text style={styles.roleLabel}>{getRoleLabel(role)}</Text>}
         </View>
         {onCollapse ? (
@@ -131,18 +134,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.sm,
   },
-  logo: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  tagline: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
+  logoImage: { width: 178, height: 78 },
   roleLabel: {
     alignSelf: 'flex-start',
     marginTop: spacing.sm,

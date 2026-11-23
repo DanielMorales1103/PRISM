@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { AuthenticatedRequest, requireAuth, requireRoles } from '../middleware/auth.middleware.js';
 import { TrainingCompletionModel } from '../models/training-completion.model.js';
 import { TrainingModel } from '../models/training.model.js';
+import { CycleModel } from '../models/cycle.model.js';
 
 export const trainingRouter = Router();
 
@@ -19,6 +20,13 @@ function isGoogleDriveUrl(value: string) {
   }
 }
 
+async function parseCycleId(value: unknown) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !Types.ObjectId.isValid(value)) throw new Error('Ciclo invalido.');
+  if (!await CycleModel.exists({ _id: value })) throw new Error('El ciclo seleccionado no existe.');
+  return new Types.ObjectId(value);
+}
+
 trainingRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next) => {
   try {
     const filter = canManageTraining(req.auth?.role) ? {} : { active: true };
@@ -30,10 +38,12 @@ trainingRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next
 
     res.json(trainings.map((training) => ({
       id: training._id.toString(),
+      cycleId: training.cycleId?.toString(),
       title: training.title,
       description: training.description,
       resourceUrl: training.resourceUrl,
       active: training.active,
+      createdAt: training.createdAt,
       completedAt: completedByTraining.get(training._id.toString()),
     })));
   } catch (error) {
@@ -43,6 +53,7 @@ trainingRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res, next
 
 trainingRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
   try {
+    const cycleId = await parseCycleId(req.body?.cycleId);
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
     const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
     const resourceUrl = typeof req.body?.resourceUrl === 'string' ? req.body.resourceUrl.trim() : '';
@@ -54,8 +65,8 @@ trainingRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req,
       res.status(400).json({ message: 'El material debe ser un enlace HTTPS de Google Drive o Google Docs.' });
       return;
     }
-    const training = await TrainingModel.create({ title, description, resourceUrl, active: true });
-    res.status(201).json({ id: training.id, title: training.title, description: training.description, resourceUrl: training.resourceUrl, active: training.active });
+    const training = await TrainingModel.create({ cycleId, title, description, resourceUrl, active: true });
+    res.status(201).json({ id: training.id, cycleId: training.cycleId?.toString(), title: training.title, description: training.description, resourceUrl: training.resourceUrl, active: training.active, createdAt: training.createdAt });
   } catch (error) {
     next(error);
   }
@@ -84,12 +95,40 @@ trainingRouter.patch('/:id/status', requireAuth, requireRoles('admin', 'jefe'), 
 
     res.json({
       id: training.id,
+      cycleId: training.cycleId?.toString(),
       title: training.title,
       description: training.description,
       resourceUrl: training.resourceUrl,
       active: training.active,
+      createdAt: training.createdAt,
     });
   } catch (error) {
+    next(error);
+  }
+});
+
+trainingRouter.patch('/:id/cycle', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    if (!Types.ObjectId.isValid(req.params.id)) {
+      res.status(400).json({ message: 'Capacitacion invalida.' });
+      return;
+    }
+    const cycleId = await parseCycleId(req.body?.cycleId);
+    const training = await TrainingModel.findByIdAndUpdate(
+      req.params.id,
+      cycleId ? { $set: { cycleId } } : { $unset: { cycleId: 1 } },
+      { new: true },
+    );
+    if (!training) {
+      res.status(404).json({ message: 'Capacitacion no encontrada.' });
+      return;
+    }
+    res.json({ id: training.id, cycleId: training.cycleId?.toString(), title: training.title, description: training.description, resourceUrl: training.resourceUrl, active: training.active, createdAt: training.createdAt });
+  } catch (error) {
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     next(error);
   }
 });

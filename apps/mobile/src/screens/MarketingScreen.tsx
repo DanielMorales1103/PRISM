@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { api, MarketingAsset } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 const formatSize = (size: number) => size < 1024 * 1024 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / (1024 * 1024)).toFixed(1)} MB`;
 
@@ -37,6 +38,7 @@ export function MarketingScreen() {
   const [uploading, setUploading] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
 
   useEffect(() => {
     let live = true;
@@ -72,7 +74,7 @@ export function MarketingScreen() {
       if (!token) throw new Error('Sesión no disponible.');
       const asset = await api.uploadMarketingAsset(token, product.id, { type, fileName: file.name, contentType: file.type, base64: await fileAsBase64(file) });
       setAssets((current) => [...current.filter((item) => !(item.productId === product.id && item.type === type)), asset]);
-      setMessage(`${type === 'cover' ? 'Portada' : 'Presentación'} de ${product.name} subida como versión ${asset.version}.`);
+      setConfirmation(`${type === 'cover' ? 'Portada' : 'Presentación'} de ${product.name} subida como versión ${asset.version}.`);
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : 'No se pudo subir el archivo.');
@@ -81,7 +83,7 @@ export function MarketingScreen() {
     }
   };
 
-  return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  return <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <View style={styles.header}><View style={styles.headerIcon}><Megaphone size={26} color={colors.primary} /></View><View><Text style={styles.title}>Marketing</Text><Text style={styles.subtitle}>Carga la portada y la presentación interactiva vigente de cada producto.</Text></View></View>
     {message ? <Text style={[styles.message, error && styles.messageError]}>{message}</Text> : null}
     {loading ? <View style={styles.loading}><ActivityIndicator color={colors.primary} size="large" /><Text style={styles.subtitle}>Cargando productos...</Text></View> : null}
@@ -91,7 +93,7 @@ export function MarketingScreen() {
       <AssetSlot icon={<FileArchive size={21} color={colors.primary} />} label="Presentación interactiva" acceptLabel="ZIP autocontenido · máximo 50 MB" asset={presentation} loading={uploading === `${product.id}-presentation`} onUpload={() => void uploadAsset(product, 'presentation')} />
     </View>; })}</View>
     {!loading && products.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>No hay productos activos</Text><Text style={styles.subtitle}>Crea primero un producto desde Administración.</Text></View> : null}
-  </ScrollView>;
+  </ScrollView><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>;
 }
 
 function AssetSlot({ icon, label, acceptLabel, asset, loading, onUpload }: { icon: React.ReactNode; label: string; acceptLabel: string; asset?: MarketingAsset; loading: boolean; onUpload: () => void; }) {

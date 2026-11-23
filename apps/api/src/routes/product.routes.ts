@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Types } from 'mongoose';
 import { requireAuth, requireRoles } from '../middleware/auth.middleware.js';
 import { ProductModel } from '../models/product.model.js';
 
@@ -9,6 +10,7 @@ function mapProduct(product: {
   name: string;
   line: string;
   presentation: string;
+  unitPrice?: number | null;
   composition?: string | null;
   dosage?: string | null;
   details?: string | null;
@@ -20,6 +22,7 @@ function mapProduct(product: {
     name: product.name,
     line: product.line,
     presentation: product.presentation,
+    unitPrice: product.unitPrice ?? 100,
     composition: product.composition,
     dosage: product.dosage,
     details: product.details,
@@ -43,13 +46,14 @@ productRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, 
     const name = String(req.body?.name ?? '').trim();
     const line = String(req.body?.line ?? '').trim();
     const presentation = String(req.body?.presentation ?? '').trim();
+    const unitPrice = Number(req.body?.unitPrice);
     const composition = String(req.body?.composition ?? '').trim();
     const dosage = String(req.body?.dosage ?? '').trim();
     const details = String(req.body?.details ?? '').trim();
     const imageUrl = String(req.body?.imageUrl ?? '').trim();
 
-    if (!name || !line || !presentation) {
-      res.status(400).json({ message: 'Name, line and presentation are required' });
+    if (!name || !line || !presentation || !Number.isFinite(unitPrice) || unitPrice <= 0 || Math.round(unitPrice * 100) !== unitPrice * 100) {
+      res.status(400).json({ message: 'Nombre, línea, presentación y precio unitario válido son requeridos.' });
       return;
     }
 
@@ -63,6 +67,7 @@ productRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, 
       name,
       line,
       presentation,
+      unitPrice,
       composition,
       dosage,
       details,
@@ -74,4 +79,17 @@ productRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, 
   } catch (error) {
     next(error);
   }
+});
+
+productRouter.patch('/:id/price', requireAuth, requireRoles('admin', 'jefe'), async (req, res, next) => {
+  try {
+    if (!Types.ObjectId.isValid(req.params.id)) { res.status(400).json({ message: 'Producto inválido.' }); return; }
+    const unitPrice = Number(req.body?.unitPrice);
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || Math.round(unitPrice * 100) !== unitPrice * 100) {
+      res.status(400).json({ message: 'Ingresa un precio unitario válido, mayor que cero y con hasta dos decimales.' }); return;
+    }
+    const product = await ProductModel.findByIdAndUpdate(req.params.id, { unitPrice }, { new: true, runValidators: true });
+    if (!product) { res.status(404).json({ message: 'Producto no encontrado.' }); return; }
+    res.json(mapProduct(product));
+  } catch (error) { next(error); }
 });

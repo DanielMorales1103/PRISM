@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { AuthenticatedRequest, requireAuth } from '../middleware/auth.middleware.js';
 import { PresentationVisitModel } from '../models/presentation-visit.model.js';
 import { VisitModel } from '../models/visit.model.js';
+import { CycleModel } from '../models/cycle.model.js';
 import { VisitPlanModel } from '../models/visit-plan.model.js';
 import { SampleInventoryModel } from '../models/sample-inventory.model.js';
 
@@ -137,6 +138,7 @@ presentationVisitRouter.post('/', requireAuth, async (req: AuthenticatedRequest,
     ? await VisitModel.create({
       userId,
       planId,
+      cycleId: (await CycleModel.findOne({ startsAt: { $lte: completedAt }, endsAt: { $gte: completedAt } }).select('_id').lean())?._id,
       presentationVisitId: visit._id,
       clientType: 'doctor',
       clientId: doctorId,

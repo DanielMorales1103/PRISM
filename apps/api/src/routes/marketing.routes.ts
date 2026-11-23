@@ -98,6 +98,44 @@ marketingRouter.get('/', requireAuth, requireRoles('jefe', 'admin'), async (_req
   }
 });
 
+marketingRouter.get('/covers', requireAuth, async (_req, res, next) => {
+  try {
+    const covers = await MarketingAssetModel.find({ type: 'cover', active: true }).sort({ createdAt: -1 }).lean();
+    const items = await Promise.all(covers.map(async (cover) => ({
+      ...serializeAsset(cover),
+      url: await createSignedUrl(cover.storagePath),
+    })));
+    res.json({ covers: items });
+  } catch (error) {
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    next(error);
+  }
+});
+
+marketingRouter.get('/assets/:assetId/access', requireAuth, async (req, res, next) => {
+  try {
+    if (!Types.ObjectId.isValid(req.params.assetId)) {
+      res.status(400).json({ message: 'Archivo invalido.' });
+      return;
+    }
+    const asset = await MarketingAssetModel.findById(req.params.assetId).lean();
+    if (!asset) {
+      res.status(404).json({ message: 'Archivo no encontrado.' });
+      return;
+    }
+    res.json({ asset: serializeAsset(asset), url: await createSignedUrl(asset.storagePath) });
+  } catch (error) {
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+    next(error);
+  }
+});
+
 marketingRouter.get('/products/:productId/presentation', requireAuth, async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.productId)) {

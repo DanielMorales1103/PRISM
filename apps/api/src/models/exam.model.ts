@@ -13,10 +13,12 @@ const ExamQuestionSchema = new Schema(
 
 const ExamSchema = new Schema(
   {
+    cycleId: { type: Schema.Types.ObjectId, ref: 'Cycle', index: true },
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     questions: { type: [ExamQuestionSchema], required: true },
     passingScore: { type: Number, required: true, min: 0, max: 100, default: 70 },
+    maxAttempts: { type: Number, required: true, min: 1, max: 20, default: 1 },
     active: { type: Boolean, default: true, index: true },
   },
   { timestamps: true },

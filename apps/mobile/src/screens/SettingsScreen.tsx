@@ -5,6 +5,7 @@ import { SessionUser } from '../app/types';
 import { api } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 interface SettingsScreenProps {
   currentUser: SessionUser;
@@ -18,6 +19,7 @@ export function SettingsScreen({ currentUser, onSessionUpdated }: SettingsScreen
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
+  const [confirmation, setConfirmation] = useState('');
 
   const submit = async () => {
     const nextEmail = email.trim().toLowerCase();
@@ -48,7 +50,7 @@ export function SettingsScreen({ currentUser, onSessionUpdated }: SettingsScreen
       setPassword('');
       setPasswordConfirmation('');
       setError(false);
-      setMessage('Tus ajustes se guardaron correctamente.');
+      setConfirmation('Tus ajustes se guardaron correctamente.');
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : 'No se pudieron guardar los ajustes.');
@@ -57,7 +59,7 @@ export function SettingsScreen({ currentUser, onSessionUpdated }: SettingsScreen
     }
   };
 
-  return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  return <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <View style={styles.header}><View style={styles.headerIcon}><UserRound size={26} color={colors.primary} /></View><View><Text style={styles.title}>Configuración</Text><Text style={styles.subtitle}>Administra las credenciales de tu cuenta.</Text></View></View>
     <View style={styles.card}>
       <View style={styles.cardHeading}><AtSign size={21} color={colors.primary} /><View><Text style={styles.cardTitle}>Correo electrónico</Text><Text style={styles.cardHint}>Se usará en tu próximo inicio de sesión.</Text></View></View>
@@ -70,7 +72,7 @@ export function SettingsScreen({ currentUser, onSessionUpdated }: SettingsScreen
     </View>
     {message ? <Text style={[styles.message, error && styles.errorMessage]}>{message}</Text> : null}
     <Pressable disabled={saving} onPress={() => void submit()} style={[styles.saveButton, saving && styles.disabled]}><Save size={19} color={colors.onPrimary} /><Text style={styles.saveText}>{saving ? 'Guardando...' : 'Guardar ajustes'}</Text></Pressable>
-  </ScrollView>;
+  </ScrollView><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>;
 }
 
 const styles = StyleSheet.create({

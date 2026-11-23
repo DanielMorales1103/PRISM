@@ -5,6 +5,7 @@ const ProductSchema = new Schema(
     name: { type: String, required: true, trim: true },
     line: { type: String, required: true, trim: true },
     presentation: { type: String, required: true, trim: true },
+    unitPrice: { type: Number, required: true, min: 0.01, default: 100 },
     composition: { type: String, trim: true },
     dosage: { type: String, trim: true },
     details: { type: String, trim: true },
