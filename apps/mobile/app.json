@@ -34,11 +34,15 @@
         "model": "TB310XU",
         "ramGb": 4,
         "storageGb": 128
+      },
+      "eas": {
+        "projectId": "1ba4ab2f-b5ff-4861-8df2-f2138ed4d3bd"
       }
     },
     "plugins": [
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-notifications"
     ]
   }
 }

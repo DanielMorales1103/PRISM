@@ -6,6 +6,7 @@ export const roleLabels: Record<AppRole, string> = {
   supervisor: 'Supervisor',
   visitador: 'Visitador',
   facturacion: 'Facturacion',
+  secretaria: 'Secretaria',
 };
 
 export function getRoleLabel(role: AppRole) {

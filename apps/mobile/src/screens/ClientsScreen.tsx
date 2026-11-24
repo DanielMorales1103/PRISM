@@ -8,6 +8,7 @@ import { SessionUser } from '../app/types';
 import { api } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, spacing } from '../theme/theme';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 interface ClientsScreenProps {
   currentUser: SessionUser;
@@ -102,6 +103,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
   const [assigningClientId, setAssigningClientId] = useState<string | null>(null);
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [assignmentMessageType, setAssignmentMessageType] = useState<'success' | 'error'>('success');
   const [directorySearch, setDirectorySearch] = useState('');
   const [visitadorMenuOpen, setVisitadorMenuOpen] = useState(false);
@@ -246,7 +248,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
         const updated = await api.updatePharmacy(token, editingClient.id, { name: editForm.name.trim(), category: editForm.category, address: editForm.address.trim(), ownerName: editForm.ownerName.trim(), purchaseManager: editForm.purchaseManager.trim(), phone: editForm.phone.trim(), mobilePhone: editForm.mobilePhone.trim(), emailOrSocial: editForm.emailOrSocial.trim(), visitDays: getVisitDays(editForm.visitDays), visitHours: editForm.visitHours.trim() });
         setPharmacies((current) => current.map((client) => client.id === updated.id ? updated : client));
       }
-      setEditingClient(null); setMessageType('success'); setMessage('Cliente actualizado correctamente.');
+      setEditingClient(null); setConfirmation('Cliente actualizado correctamente.');
     } catch (error) { setMessageType('error'); setMessage(error instanceof Error ? error.message : 'No se pudo actualizar el cliente.'); }
     finally { setSavingEdit(false); }
   };
@@ -356,6 +358,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
 
       setListFilter('deleted');
       setPendingDeleteClient(null);
+      setConfirmation('Cliente desactivado correctamente.');
     } catch (error) {
       setMessageType('error');
       const errorMessage = error instanceof Error ? error.message : 'No se pudo eliminar el cliente.';
@@ -399,8 +402,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
       }
 
       const selectedVisitador = activeVisitadores.find((visitador) => visitador.id === selectedVisitadorId);
-      setAssignmentMessageType('success');
-      setAssignmentMessage(clearAssignment
+      setConfirmation(clearAssignment
         ? `${selectedAssignClient.name} quedo sin asignacion.`
         : `${selectedAssignClient.name} fue asignado a ${selectedVisitador?.name ?? 'el visitador seleccionado'}.`);
       setSelectedAssignClientId('');
@@ -621,8 +623,12 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
                     <ChevronDown size={20} color={colors.muted} />
                   </Pressable>
 
-                  {visitadorMenuOpen && (
-                    <ScrollView style={styles.dropdownMenu} nestedScrollEnabled>
+                  <Modal visible={visitadorMenuOpen} transparent animationType="fade" onRequestClose={() => setVisitadorMenuOpen(false)}>
+                    <View style={styles.visitadorModalBackdrop}>
+                      <Pressable style={StyleSheet.absoluteFill} onPress={() => setVisitadorMenuOpen(false)} />
+                      <View style={styles.visitadorModalCard}>
+                        <Text style={styles.dropdownTitle}>Selecciona un visitador</Text>
+                        <ScrollView style={styles.visitadorModalList} nestedScrollEnabled showsVerticalScrollIndicator keyboardShouldPersistTaps="always">
                       {activeVisitadores.map((visitador) => (
                         <Pressable
                           key={visitador.id}
@@ -639,8 +645,10 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
                           {selectedVisitadorId === visitador.id && <Check size={18} color={colors.primary} />}
                         </Pressable>
                       ))}
-                    </ScrollView>
-                  )}
+                        </ScrollView>
+                      </View>
+                    </View>
+                  </Modal>
                 </View>
               )}
               <View style={styles.assignmentActions}>
@@ -827,6 +835,7 @@ export function ClientsScreen({ currentUser }: ClientsScreenProps) {
           </View>
         </View>
       </Modal>
+      <ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} />
     </ScrollView>
   );
 }
@@ -1224,6 +1233,9 @@ const styles = StyleSheet.create({
     elevation: 20,
     gap: spacing.sm,
   },
+  visitadorModalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg, backgroundColor: 'rgba(17,24,39,0.45)' },
+  visitadorModalCard: { width: '100%', maxWidth: 480, maxHeight: '75%', padding: spacing.md, gap: spacing.sm, borderRadius: radius.lg, backgroundColor: colors.surface },
+  visitadorModalList: { maxHeight: 400 },
   dropdownControl: {
     minHeight: 68,
     borderRadius: radius.lg,

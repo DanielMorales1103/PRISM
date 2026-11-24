@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CheckCircle2 } from 'lucide-react-native';
+import { AlertCircle, CheckCircle2 } from 'lucide-react-native';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 
 interface ConfirmationModalProps {
@@ -7,13 +7,14 @@ interface ConfirmationModalProps {
   message: string;
   onClose: () => void;
   title?: string;
+  variant?: 'success' | 'error';
 }
 
-export function ConfirmationModal({ visible, message, onClose, title = 'Operación completada' }: ConfirmationModalProps) {
+export function ConfirmationModal({ visible, message, onClose, title = 'Operación completada', variant = 'success' }: ConfirmationModalProps) {
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
     <View style={styles.overlay}>
       <View style={styles.card}>
-        <View style={styles.icon}><CheckCircle2 size={30} color={colors.success} /></View>
+        <View style={styles.icon}>{variant === 'error' ? <AlertCircle size={30} color={colors.primaryDark} /> : <CheckCircle2 size={30} color={colors.success} />}</View>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.message}>{message}</Text>
         <Pressable onPress={onClose} style={styles.button}><Text style={styles.buttonText}>Aceptar</Text></Pressable>

@@ -1,6 +1,6 @@
 import type { Doctor } from '@prism/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { ArrowLeft, Building2, ChevronRight, Cross, LocateFixed, MapPin, Navigation, User } from 'lucide-react-native';
 import { SessionUser, VisitDoctorSnapshot } from '../app/types';
 import { api } from '../services/api';
@@ -125,13 +125,18 @@ export function NewVisitScreen({ currentUser, onBack, onContinue, offline = fals
       </View>
 
       <View style={[styles.body, !wide && styles.bodyStacked]}>
-        <View style={[styles.formPanel, offline && styles.offlineFormPanel]}>
+        <ScrollView
+          style={[styles.formPanel, offline && styles.offlineFormPanel]}
+          contentContainerStyle={[styles.formPanelContent, offline && styles.offlineFormPanelContent]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={[styles.formContent, offline && styles.offlineFormContent]}>
             <Text style={styles.sectionTitle}>Informacion del Medico</Text>
             <Text style={styles.sectionDescription}>Completa los datos para personalizar la experiencia.</Text>
 
             <View style={[styles.formRow, !wide && styles.formRowStacked]}>
-              <View style={styles.fieldGroup}>
+              <View style={[styles.fieldGroup, styles.rowFieldGroup]}>
                 <Text style={styles.label}>Nombre del Medico</Text>
                 <View style={styles.autocompleteWrap}>
                   <View style={styles.inputWrap}>
@@ -173,7 +178,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue, offline = fals
                 </View>
               </View>
 
-              <View style={styles.fieldGroup}>
+              <View style={[styles.fieldGroup, styles.rowFieldGroup]}>
                 <Text style={styles.label}>Especialidad</Text>
                 <View style={styles.inputWrap}><Cross size={20} color="#A3A3A3" />{offline ? <TextInput value={manualSpecialty} onChangeText={setManualSpecialty} placeholder="Especialidad" placeholderTextColor="#8B8B8B" style={styles.input} /> : <Text style={styles.selectText}>{selectedDoctor?.specialty ?? 'Selecciona Especialidad'}</Text>}</View>
               </View>
@@ -225,7 +230,7 @@ export function NewVisitScreen({ currentUser, onBack, onContinue, offline = fals
             <Text style={[styles.continueText, offline && styles.offlineContinueText]}>Continuar a Seleccion de Producto</Text>
             <ChevronRight size={22} color={colors.onPrimary} />
           </Pressable>
-        </View>
+        </ScrollView>
 
         {!offline && <View style={styles.mapPanel}>
           <View style={styles.searchRow}>
@@ -263,7 +268,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   topbar: {
-    minHeight: 112,
+    minHeight: 88,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     flexDirection: 'row',
@@ -272,9 +277,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   backButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: '#F2F2F2',
     alignItems: 'center',
     justifyContent: 'center',
@@ -284,12 +289,12 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#020202',
-    fontSize: 25,
+    fontSize: 23,
     fontWeight: '900',
   },
   brand: {
     color: '#777777',
-    fontSize: 24,
+    fontSize: 18,
     marginTop: 2,
   },
   statusPill: {
@@ -323,23 +328,28 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRightWidth: 1,
     borderRightColor: colors.border,
+  },
+  formPanelContent: {
+    flexGrow: 1,
     padding: spacing.xl,
     justifyContent: 'space-between',
+    gap: spacing.lg,
   },
   formContent: {
     gap: spacing.xl,
     maxWidth: 840,
   },
-  offlineFormPanel: { borderRightWidth: 0, alignItems: 'center', paddingBottom: 40 },
-  offlineFormContent: { width: '100%', maxWidth: 1120 },
+  offlineFormPanel: { borderRightWidth: 0 },
+  offlineFormPanelContent: { alignItems: 'center', paddingBottom: spacing.xl },
+  offlineFormContent: { width: '100%', maxWidth: 1000 },
   sectionTitle: {
     color: '#050505',
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '900',
   },
   sectionDescription: {
     color: '#7B7B7B',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '700',
     marginTop: -spacing.md,
   },
@@ -352,8 +362,12 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   fieldGroup: {
-    flex: 1,
     gap: spacing.sm,
+    width: '100%',
+  },
+  rowFieldGroup: {
+    flex: 1,
+    minWidth: 260,
   },
   autocompleteWrap: {
     position: 'relative',
@@ -361,12 +375,12 @@ const styles = StyleSheet.create({
   },
   label: {
     color: '#4E4E4E',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
   },
   inputWrap: {
-    minHeight: 72,
-    borderRadius: 22,
+    minHeight: 58,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#DEDEDE',
     backgroundColor: colors.surface,
@@ -378,12 +392,12 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   selectText: {
     color: '#050505',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
   },
   dropdown: {
@@ -442,11 +456,11 @@ const styles = StyleSheet.create({
   },
   offlineContinueButton: {
     width: '100%',
-    maxWidth: 1120,
-    minHeight: 68,
-    borderRadius: 20,
+    maxWidth: 1000,
+    minHeight: 56,
+    borderRadius: 12,
     paddingHorizontal: spacing.xl,
-    marginBottom: spacing.lg,
+    marginBottom: 0,
   },
   offlineContinueText: {
     flex: 1,

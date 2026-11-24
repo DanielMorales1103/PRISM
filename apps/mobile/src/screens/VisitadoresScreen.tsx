@@ -5,6 +5,7 @@ import { Building2, Search, Stethoscope, Trash2, UserRoundCheck, Users } from 'l
 import { api } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 type AssignedClient = Doctor | Pharmacy;
 type ClientFilter = 'all' | 'doctor' | 'pharmacy';
@@ -18,6 +19,7 @@ export function VisitadoresScreen() {
   const [removingId, setRemovingId] = useState('');
   const [clientPendingRemoval, setClientPendingRemoval] = useState<AssignedClient | null>(null);
   const [message, setMessage] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -58,7 +60,7 @@ export function VisitadoresScreen() {
         : await api.assignPharmacy(token, client.id);
       setClients((current) => current.map((item) => item.id === updated.id ? updated : item));
       setError(false);
-      setMessage(`${client.name} quedó sin visitador asignado.`);
+      setConfirmation(`${client.name} quedó sin visitador asignado.`);
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : 'No se pudo quitar la asignación.');
@@ -103,7 +105,7 @@ export function VisitadoresScreen() {
         </View>
       </View>
     </View>
-  </Modal></>;
+  </Modal><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>;
 }
 
 const styles = StyleSheet.create({

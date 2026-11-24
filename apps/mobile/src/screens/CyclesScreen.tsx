@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString('es-GT', {
   weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
@@ -28,6 +29,7 @@ export function CyclesScreen() {
   const [deletingCycle, setDeletingCycle] = useState(false);
   const [editMessage, setEditMessage] = useState('');
   const [message, setMessage] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const orderedCycles = useMemo(() => [...cycles].sort((first, second) => new Date(first.startsAt).getTime() - new Date(second.startsAt).getTime()), [cycles]);
   const lastCycleId = orderedCycles.at(-1)?.id;
 
@@ -58,7 +60,7 @@ export function CyclesScreen() {
       if (!token) throw new Error('Sesion no disponible.');
       const cycle = await api.createCycle(token, createDurationWeeks);
       setCycles((current) => [...current, cycle]);
-      setMessage(`${cycle.name} creado: ${formatDate(cycle.startsAt)} al ${formatDate(cycle.endsAt)}.`);
+      setConfirmation(`${cycle.name} creado: ${formatDate(cycle.startsAt)} al ${formatDate(cycle.endsAt)}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo crear el ciclo.');
     } finally {
@@ -88,7 +90,7 @@ export function CyclesScreen() {
       const updated = new Map(response.cycles.map((cycle) => [cycle.id, cycle]));
       setCycles((current) => current.map((cycle) => updated.get(cycle.id) ?? cycle));
       setEditingCycleId(null);
-      setMessage('Ciclo actualizado. Los ciclos posteriores y sus citas pendientes se reacomodaron automáticamente.');
+      setConfirmation('Ciclo actualizado. Los ciclos posteriores y sus citas pendientes se reacomodaron automáticamente.');
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'No se pudo actualizar el ciclo.';
       setEditMessage(detail === 'Insufficient permissions' ? 'Tu sesión no tiene permisos de admin o jefe para editar ciclos. Cierra sesión e ingresa con la cuenta correcta.' : detail);
@@ -107,7 +109,7 @@ export function CyclesScreen() {
       await api.deleteCycle(token, pendingDeleteCycleId);
       setCycles((current) => current.filter((cycle) => cycle.id !== pendingDeleteCycleId));
       setPendingDeleteCycleId(null);
-      setMessage('Último ciclo eliminado.');
+      setConfirmation('Último ciclo eliminado.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'No se pudo eliminar el ciclo.');
     } finally {
@@ -115,7 +117,7 @@ export function CyclesScreen() {
     }
   };
 
-  return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  return <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
     <View style={styles.header}>
       <Text style={styles.title}>Ciclos de trabajo</Text>
       <Text style={styles.subtitle}>Cada ciclo inicia lunes, puede durar las semanas que definas y continúa inmediatamente después del anterior.</Text>
@@ -142,7 +144,7 @@ export function CyclesScreen() {
         {pendingDeleteCycleId === cycle.id ? <View style={styles.deletePanel}><Text style={styles.deleteText}>¿Eliminar {cycle.name}? Esta acción no se puede deshacer.</Text><View style={styles.editActions}><Pressable disabled={deletingCycle} onPress={() => void deleteCycle()} style={[styles.deleteConfirmButton, deletingCycle && styles.disabled]}><Text style={styles.buttonText}>{deletingCycle ? 'Eliminando...' : 'Eliminar ciclo'}</Text></Pressable><Pressable disabled={deletingCycle} onPress={() => setPendingDeleteCycleId(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancelar</Text></Pressable></View></View> : null}
       </View>)}
     </View>
-  </ScrollView>;
+  </ScrollView><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>;
 }
 
 const styles = StyleSheet.create({

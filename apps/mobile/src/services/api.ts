@@ -4,7 +4,7 @@ import { AppRole } from '../app/types';
 function getDefaultApiUrl() {
   // Expo Web may be opened through the machine's LAN address instead of localhost.
   // Match that host so the browser can reach the API from either address.
-  if (typeof window !== 'undefined' && window.location.hostname) {
+  if (typeof window !== 'undefined' && window.location?.hostname) {
     return `http://${window.location.hostname}:4000`;
   }
 
@@ -12,6 +12,23 @@ function getDefaultApiUrl() {
 }
 
 const baseUrl = process.env.EXPO_PUBLIC_API_URL ?? getDefaultApiUrl();
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+function checkUnauthorized(response: Response, token?: string) {
+  if (token && response.status === 401) unauthorizedHandler?.();
+}
+
+export interface AppNotification {
+  id: string;
+  kind: 'return' | 'training' | 'exam';
+  title: string;
+  body: string;
+  createdAt: string;
+}
 
 export interface CatalogResponse {
   roles: string[];
@@ -424,6 +441,10 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const api = {
   getBaseUrl: () => baseUrl,
+  getNotifications: (token: string) => getAuthorizedJson<AppNotification[]>('/api/notifications', token),
+  markNotificationRead: (token: string, id: string) => patchJson<{ ok: boolean }>(`/api/notifications/${id}/read`, {}, token),
+  registerPushDevice: (token: string, pushToken: string) => postJson<{ ok: boolean }>('/api/notifications/devices', { token: pushToken }, token),
+  unregisterPushDevice: (token: string, pushToken: string) => deleteJson<{ ok: boolean }>('/api/notifications/devices', token, { token: pushToken }),
   login: (email: string, password: string) =>
     postJson<LoginResponse>('/api/auth/login', {
       email,
@@ -532,6 +553,7 @@ async function getAuthorizedJson<T>(path: string, token: string): Promise<T> {
   });
 
   if (!response.ok) {
+    checkUnauthorized(response, token);
     throw new Error(await getErrorMessage(response));
   }
 
@@ -549,21 +571,25 @@ async function postJson<T>(path: string, body: unknown, token?: string): Promise
   });
 
   if (!response.ok) {
+    checkUnauthorized(response, token);
     throw new Error(await getErrorMessage(response));
   }
 
   return response.json() as Promise<T>;
 }
 
-async function deleteJson<T>(path: string, token?: string): Promise<T> {
+async function deleteJson<T>(path: string, token?: string, body?: unknown): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'DELETE',
     headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
   if (!response.ok) {
+    checkUnauthorized(response, token);
     throw new Error(await getErrorMessage(response));
   }
 
@@ -581,6 +607,7 @@ async function patchJson<T>(path: string, body: unknown, token?: string): Promis
   });
 
   if (!response.ok) {
+    checkUnauthorized(response, token);
     throw new Error(await getErrorMessage(response));
   }
 

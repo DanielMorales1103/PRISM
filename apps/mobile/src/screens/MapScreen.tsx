@@ -8,6 +8,7 @@ import { api } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, shadows, spacing } from '../theme/theme';
 import { LocationMapPreview } from '../components/LocationMapPreview';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 type MapClient = Doctor | Pharmacy;
 
@@ -22,6 +23,7 @@ export function MapScreen({ currentUser }: MapScreenProps) {
   const [currentLocation, setCurrentLocation] = useState<GeoLocation | null>(null);
   const [capturedLocation, setCapturedLocation] = useState<GeoLocation | null>(null);
   const [message, setMessage] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   const manager = ['admin', 'jefe', 'supervisor'].includes(currentUser.role);
@@ -86,10 +88,10 @@ export function MapScreen({ currentUser }: MapScreenProps) {
   const handleMapLocationChange = (location: GeoLocation) => {
     if (selectedClient) {
       setCapturedLocation(location);
-      setMessage('Punto ajustado. Confirma para guardar esta nueva ubicación.');
+      setConfirmation('Punto ajustado. Confirma para guardar esta nueva ubicación.');
     } else {
       setCurrentLocation(location);
-      setMessage('Punto de referencia ajustado. Selecciona un cliente para guardarlo.');
+      setConfirmation('Punto de referencia ajustado. Selecciona un cliente para guardarlo.');
     }
     setError(false);
   };
@@ -110,7 +112,7 @@ export function MapScreen({ currentUser }: MapScreenProps) {
       setCurrentLocation(location);
       setCapturedLocation(location);
       setError(false);
-      setMessage('Ubicación obtenida. Revisa el mapa y confirma para guardarla.');
+      setConfirmation('Ubicación obtenida. Revisa el mapa y confirma para guardarla.');
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : 'No se pudo obtener la ubicación.');
@@ -132,7 +134,7 @@ export function MapScreen({ currentUser }: MapScreenProps) {
       setClients((current) => current.map((client) => client.id === updated.id ? updated : client));
       setCapturedLocation(null);
       setError(false);
-      setMessage(`Ubicación guardada para ${updated.name}.`);
+      setConfirmation(`Ubicación guardada para ${updated.name}.`);
     } catch (cause) {
       setError(true);
       setMessage(cause instanceof Error ? cause.message : 'No se pudo registrar la ubicación.');
@@ -142,7 +144,7 @@ export function MapScreen({ currentUser }: MapScreenProps) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <View style={styles.iconWrap}><MapPin size={27} color={colors.primary} /></View>
         <View><Text style={styles.title}>Mapa Inteligente</Text><Text style={styles.subtitle}>Registra puntos reales de tu cartera y abre la navegación en Google Maps.</Text></View>
@@ -181,7 +183,7 @@ export function MapScreen({ currentUser }: MapScreenProps) {
       </View> : <View style={styles.infoPanel}>
         <Navigation size={22} color={colors.primary} /><View style={styles.infoCopy}><Text style={styles.infoTitle}>Ubicación pendiente</Text><Text style={styles.infoText}>Permite el acceso a tu ubicación para visualizar el mapa.</Text></View>
       </View>}
-    </ScrollView>
+    </ScrollView><ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} /></>
   );
 }
 

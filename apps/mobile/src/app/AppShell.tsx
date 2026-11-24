@@ -1,6 +1,7 @@
 import type { Product, VisitPlan } from '@prism/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Image, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AdminScreen } from '../screens/AdminScreen';
 import { AgendaScreen } from '../screens/AgendaScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
@@ -26,14 +27,16 @@ import { VisitCommentsScreen } from '../screens/VisitCommentsScreen';
 import { VisitResultDraft, VisitResultScreen } from '../screens/VisitResultScreen';
 import { Sidebar } from '../components/Sidebar';
 import { OfflineVisitSyncModal } from '../components/OfflineVisitSyncModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 import { canAccessScreen } from './permissions';
 import { AppScreen, SessionUser, VisitDoctorSnapshot } from './types';
 import { colors } from '../theme/theme';
-import { api } from '../services/api';
+import { api, AppNotification, setUnauthorizedHandler } from '../services/api';
 import { clearSession, loadSession, loadToken } from '../services/session';
 import { saveSession } from '../services/session';
 import { loadOfflineVisits, OfflineVisitDraft } from '../services/offlineVisitQueue';
 import { loadOfflineCatalog } from '../services/offlineCatalog';
+import { getPushToken, listenForPush } from '../services/pushNotifications';
 import { Menu, WifiOff } from 'lucide-react-native';
 
 interface VisitDraft {
@@ -73,8 +76,60 @@ export function AppShell() {
   const [candidateDoctor, setCandidateDoctor] = useState<VisitDoctorSnapshot | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [examActive, setExamActive] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const pushTokenRef = useRef<string | null>(null);
   const { width, height } = useWindowDimensions();
   const compactNav = width < 820 || height > width;
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setSessionExpired(true);
+      setConnectionLostVisible(false);
+      setNotifications([]);
+      setUser(null);
+      setScreen('login');
+      void clearSession();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let live = true;
+    const refresh = async () => {
+      const token = await loadToken();
+      if (!token) return;
+      const items = await api.getNotifications(token);
+      if (live) setNotifications(items);
+    };
+    void refresh().catch(() => {});
+    const timer = setInterval(() => { void refresh().catch(() => {}); }, 30000);
+    const appState = AppState.addEventListener('change', (state) => { if (state === 'active') void refresh().catch(() => {}); });
+    const stopPushListener = listenForPush(() => { void refresh().catch(() => {}); });
+    void (async () => {
+      try {
+        const pushToken = await getPushToken();
+        const token = await loadToken();
+        if (live && pushToken && token) {
+          await api.registerPushDevice(token, pushToken);
+          pushTokenRef.current = pushToken;
+        }
+      } catch (error) { console.warn('Push registration unavailable.', error); }
+    })();
+    return () => { live = false; clearInterval(timer); appState.remove(); stopPushListener(); };
+  }, [user?.id]);
+
+  const dismissNotification = async () => {
+    const current = notifications[0];
+    if (!current) return;
+    try {
+      const token = await loadToken();
+      if (!token) return;
+      await api.markNotificationRead(token, current.id);
+      setNotifications((items) => items.filter((item) => item.id !== current.id));
+    } catch { Alert.alert('No se pudo guardar el aviso', 'Revisa tu conexión e inténtalo otra vez.'); }
+  };
 
   useEffect(() => {
     if (compactNav) {
@@ -133,6 +188,7 @@ export function AppShell() {
 
   const handleLogin = (nextUser: SessionUser) => {
     apiFailureCount.current = 0;
+    setSessionExpired(false);
     setUser(nextUser);
     setApiAvailable(true);
     void loadOfflineVisits().then(setOfflineVisits);
@@ -140,8 +196,14 @@ export function AppShell() {
   };
 
   const handleLogout = () => {
+    const pushToken = pushTokenRef.current;
+    if (pushToken) void loadToken().then(async (token) => {
+      if (token) await api.unregisterPushDevice(token, pushToken);
+    }).catch(() => {});
+    pushTokenRef.current = null;
     void clearSession().finally(() => {
       setUser(null);
+      setNotifications([]);
       setApiAvailable(null);
       setScreen('login');
     });
@@ -308,7 +370,7 @@ export function AppShell() {
   }
 
   if (screen === 'login' || !user) {
-    return <LoginScreen onLogin={handleLogin} onOffline={() => setScreen('offline-visit')} />;
+    return <><LoginScreen onLogin={handleLogin} onOffline={() => setScreen('offline-visit')} /><ConfirmationModal visible={sessionExpired} title="Sesión vencida" message="Tu sesión venció. Inicia sesión otra vez para continuar." variant="error" onClose={() => setSessionExpired(false)} /></>;
   }
 
   const renderScreen = () => {
@@ -528,6 +590,7 @@ export function AppShell() {
         </View>
       </Modal>
       {apiAvailable ? <OfflineVisitSyncModal user={user} queue={offlineVisits} onSynced={(id) => setOfflineVisits((current) => current.filter((visit) => visit.id !== id))} /> : null}
+      <ConfirmationModal visible={!examActive && notifications.length > 0} title={notifications[0]?.title ?? ''} message={notifications[0]?.body ?? ''} onClose={() => { void dismissNotification(); }} />
     </SafeAreaView>
   );
 }
@@ -577,7 +640,10 @@ const styles = StyleSheet.create({
   drawer: {
     width: 288,
     height: '100%',
+    flex: 1,
     backgroundColor: colors.surface,
+    zIndex: 2,
+    elevation: 8,
   },
   drawerDismiss: {
     position: 'absolute',

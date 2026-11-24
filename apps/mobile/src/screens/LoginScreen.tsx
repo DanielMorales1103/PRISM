@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Lock, User } from 'lucide-react-native';
 import { SessionUser } from '../app/types';
 import { api } from '../services/api';
@@ -12,7 +12,7 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onLogin, onOffline }: LoginScreenProps) {
-  const [email, setEmail] = useState('admin@prism.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,17 +50,15 @@ export function LoginScreen({ onLogin, onOffline }: LoginScreenProps) {
       {landscape && (
         <View style={styles.hero}>
           <View style={styles.heroShade}>
-            <Text style={styles.heroLogo}>PRISM</Text>
             <Text style={styles.heroTitle}>Innovacion en la visita medica</Text>
             <Text style={styles.heroCopy}>Gestion inteligente de rutas, productos, visitas y KPIs para equipos de campo.</Text>
           </View>
         </View>
       )}
 
-      <View style={[styles.formSide, !landscape && styles.formFull]}>
+      <ScrollView style={[styles.formSide, !landscape && styles.formFull]} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
         <View style={styles.formCard}>
-          {!landscape && <Text style={styles.mobileLogo}>PRISM</Text>}
-          <Text style={styles.title}>Bienvenido</Text>
+          <Image source={require('../../assets/prism-logo-full.png')} resizeMode="contain" style={styles.logo} accessibilityLabel="PriSm" />
           <Text style={styles.subtitle}>Ingresa tus credenciales corporativas</Text>
 
           <View style={styles.fieldGroup}>
@@ -104,9 +102,8 @@ export function LoginScreen({ onLogin, onOffline }: LoginScreenProps) {
             <Text style={styles.offlineButtonText}>Entrar sin internet</Text>
           </Pressable>
 
-          <Text style={styles.hint}>Usa el usuario administrador creado en MongoDB.</Text>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -126,12 +123,6 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
     justifyContent: 'center',
   },
-  heroLogo: {
-    color: colors.onPrimary,
-    fontSize: 42,
-    fontWeight: '900',
-    marginBottom: spacing.xl,
-  },
   heroTitle: {
     color: colors.onPrimary,
     fontSize: 38,
@@ -148,6 +139,9 @@ const styles = StyleSheet.create({
   },
   formSide: {
     flex: 1,
+  },
+  formContent: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
@@ -159,18 +153,11 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 460,
   },
-  mobileLogo: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 32,
-    fontWeight: '900',
-    textAlign: 'center',
+  logo: {
+    width: 174,
+    height: 76,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
   },
   subtitle: {
     color: colors.muted,
@@ -236,12 +223,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 15,
     fontWeight: '900',
-  },
-  hint: {
-    color: colors.muted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: spacing.lg,
   },
   error: {
     color: colors.primaryDark,

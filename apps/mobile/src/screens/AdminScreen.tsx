@@ -6,6 +6,7 @@ import { canManageUsers } from '../app/permissions';
 import { getRoleLabel } from '../app/roleLabels';
 import { AppRole, SessionUser } from '../app/types';
 import { MetricCard } from '../components/MetricCard';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 import { api, DashboardSummary, SampleInventoryItem } from '../services/api';
 import { loadToken } from '../services/session';
 import { colors, radius, spacing } from '../theme/theme';
@@ -24,12 +25,12 @@ interface CreatedUserModal {
 
 type UserListFilter = 'active' | 'deleted';
 
-const assignableRoles: AppRole[] = ['visitador', 'supervisor', 'facturacion', 'jefe'];
+const assignableRoles: AppRole[] = ['visitador', 'supervisor', 'facturacion', 'secretaria', 'jefe'];
 
 const copy = {
   users: {
     title: 'Usuarios y roles',
-    description: 'Gestion inicial de visitadores, supervisores, facturacion y administradores.',
+    description: 'Gestion inicial de visitadores, supervisores, secretaria, facturacion y administradores.',
     rows: ['Daniella Morales - Visitador', 'Carlos Mendez - Supervisor', 'Admin Prism - Administrador'],
   },
   products: {
@@ -93,6 +94,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
     imageUrl: '',
   });
   const [formMessage, setFormMessage] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [formMessageType, setFormMessageType] = useState<'success' | 'error'>('success');
   const [submittingUser, setSubmittingUser] = useState(false);
   const [submittingProduct, setSubmittingProduct] = useState(false);
@@ -341,7 +343,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
         imageUrl: '',
       });
       setFormMessageType('success');
-      setFormMessage(`Producto creado: ${createdProduct.name}`);
+      setConfirmation(`Producto creado: ${createdProduct.name}`);
     } catch (error) {
       setFormMessageType('error');
       const message = error instanceof Error ? error.message : 'No se pudo crear el producto.';
@@ -362,7 +364,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
       if (!token) throw new Error('Sesión no disponible.');
       const updated = await api.updateProductPrice(token, product.id, unitPrice);
       setProducts((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setEditingPriceId(''); setPriceError(false); setPriceMessage(`Precio actualizado: ${updated.name}`);
+      setEditingPriceId(''); setPriceError(false); setConfirmation(`Precio actualizado: ${updated.name}`);
     } catch (error) {
       setPriceError(true); setPriceMessage(error instanceof Error ? error.message : 'No se pudo actualizar el precio.');
     } finally { setSavingPrice(false); }
@@ -392,6 +394,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
         activeUsers: Math.max(0, currentSummary.activeUsers - 1),
       }));
       setPendingDeleteUser(null);
+      setConfirmation('Usuario desactivado correctamente.');
     } catch (error) {
       setFormMessageType('error');
       const message = error instanceof Error ? error.message : 'No se pudo desactivar el usuario.';
@@ -421,7 +424,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
       });
       setSampleQuantity('');
       setSampleMessageType('success');
-      setSampleMessage(`Muestras asignadas. Saldo actual: ${updated.quantity}.`);
+      setConfirmation(`Muestras asignadas. Saldo actual: ${updated.quantity}.`);
     } catch (error) {
       setSampleMessageType('error');
       setSampleMessage(error instanceof Error ? error.message : 'No se pudieron asignar las muestras.');
@@ -827,6 +830,7 @@ export function AdminScreen({ currentUser, type }: AdminScreenProps) {
           </View>
         </View>
       </Modal>
+      <ConfirmationModal visible={Boolean(confirmation)} message={confirmation} onClose={() => setConfirmation('')} />
     </ScrollView>
   );
 }

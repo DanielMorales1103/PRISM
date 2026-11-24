@@ -7,11 +7,12 @@ interface ActionCardProps {
   subtitle: string;
   icon: ReactNode;
   prominent?: boolean;
+  compact?: boolean;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
 }
 
-export function ActionCard({ title, subtitle, icon, prominent, style, onPress }: ActionCardProps) {
+export function ActionCard({ title, subtitle, icon, prominent, compact, style, onPress }: ActionCardProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -23,8 +24,8 @@ export function ActionCard({ title, subtitle, icon, prominent, style, onPress }:
       ]}
     >
       {icon}
-      <Text style={[styles.title, prominent && styles.prominentText]}>{title}</Text>
-      <Text style={[styles.subtitle, prominent && styles.prominentSub]}>{subtitle}</Text>
+      <Text style={[styles.title, compact && styles.compactTitle, prominent && styles.prominentText]}>{title}</Text>
+      <Text style={[styles.subtitle, compact && styles.compactSubtitle, prominent && styles.prominentSub]}>{subtitle}</Text>
     </Pressable>
   );
 }
@@ -56,12 +57,14 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: spacing.md,
   },
+  compactTitle: { fontSize: 19, lineHeight: 24 },
   subtitle: {
     color: colors.muted,
     fontSize: 14,
     lineHeight: 20,
     marginTop: spacing.xs,
   },
+  compactSubtitle: { fontSize: 12, lineHeight: 16 },
   prominentText: {
     color: colors.onPrimary,
   },

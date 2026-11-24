@@ -16,6 +16,7 @@ import {
   RefreshCw,
 } from 'lucide-react-native';
 import { ActionCard } from '../components/ActionCard';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 import { MetricCard } from '../components/MetricCard';
 import { canAccessScreen, canManageCatalogs } from '../app/permissions';
 import { AppScreen, SessionUser, VisitDoctorSnapshot } from '../app/types';
@@ -41,7 +42,7 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
   const { width } = useWindowDimensions();
   const wide = width >= 920;
   const canAdminister = canManageCatalogs(user.role);
-  const isBilling = user.role === 'facturacion';
+  const isBilling = user.role === 'facturacion' || user.role === 'secretaria';
   const isSupervisor = user.role === 'supervisor';
   const isExecutive = user.role === 'jefe' || user.role === 'admin';
   const [plans, setPlans] = useState<VisitPlan[]>([]);
@@ -50,11 +51,10 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
   const [agendaLoading, setAgendaLoading] = useState(true);
   const [syncingTablet, setSyncingTablet] = useState(false);
   const [offlineCatalogDate, setOfflineCatalogDate] = useState<string | null>(null);
-  const [offlineContentSummary, setOfflineContentSummary] = useState('');
   const [tabletSyncMessage, setTabletSyncMessage] = useState('');
   const [tabletSyncError, setTabletSyncError] = useState(false);
 
-  useEffect(() => { void loadOfflineCatalog().then((snapshot) => { setOfflineCatalogDate(snapshot?.syncedAt ?? null); if (snapshot) setOfflineContentSummary(`${snapshot.products.length} productos · ${Object.keys(snapshot.presentations ?? {}).length} presentaciones`); }); }, []);
+  useEffect(() => { void loadOfflineCatalog().then((snapshot) => setOfflineCatalogDate(snapshot?.syncedAt ?? null)); }, []);
 
   const syncTablet = async () => {
     setSyncingTablet(true);
@@ -65,9 +65,8 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
       const snapshot = await syncOfflineCatalog(token);
       await api.recordOfflineSync(token);
       setOfflineCatalogDate(snapshot.syncedAt);
-      setOfflineContentSummary(`${snapshot.products.length} productos · ${Object.keys(snapshot.presentations).length} presentaciones`);
       setTabletSyncError(false);
-      setTabletSyncMessage(`Tablet actualizada correctamente · ${new Date(snapshot.syncedAt).toLocaleString('es-GT')}`);
+      setTabletSyncMessage(`Tablet actualizada correctamente · ${new Date(snapshot.syncedAt).toLocaleString('es-GT')}\n${snapshot.products.length} productos · ${Object.keys(snapshot.presentations).length} presentaciones`);
     } catch (cause) {
       setTabletSyncError(true);
       setTabletSyncMessage(cause instanceof Error ? cause.message : 'No se pudo actualizar la tablet.');
@@ -127,7 +126,7 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
   ].filter((action) => canAccessScreen(user.role, action.screen));
 
   return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <><ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.header, wide && styles.headerWide]}>
         <View>
           <Text style={styles.greeting}>
@@ -138,7 +137,7 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
         <View style={styles.headerActions}>
           {user.role === 'visitador' ? <View style={styles.syncWrap}><Pressable disabled={syncingTablet} onPress={() => { void syncTablet(); }} style={({ pressed }) => [styles.syncButton, pressed && styles.pressed, syncingTablet && styles.syncButtonDisabled]}>
             <RefreshCw size={17} color={colors.primary} /><Text style={styles.syncButtonText}>{syncingTablet ? 'Sincronizando...' : offlineCatalogDate ? 'Actualizar tablet' : 'Sincronizar tablet'}</Text>
-          </Pressable>{offlineContentSummary ? <Text style={styles.syncSummary}>{offlineContentSummary}</Text> : null}{tabletSyncMessage ? <Text style={[styles.syncMessage, tabletSyncError && styles.syncMessageError]}>{tabletSyncMessage}</Text> : null}</View> : null}
+          </Pressable></View> : null}
           <Pressable onPress={() => onNavigate('planner')} style={({ pressed }) => [styles.calendarButton, pressed && styles.pressed]}>
             <CalendarDays size={23} color={colors.text} />
             <View style={styles.notificationDot} />
@@ -168,10 +167,11 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
           {quickActions.map((action) => (
             <ActionCard
               key={action.title}
+              compact
               title={action.title}
               subtitle={action.subtitle}
               icon={action.icon}
-              style={styles.quickCard}
+          style={[styles.quickCard, wide && styles.quickCardWide]}
               onPress={() => onNavigate(action.screen)}
             />
           ))}
@@ -227,7 +227,7 @@ export function HomeScreen({ user, onNavigate, onStartVisit }: HomeScreenProps) 
           </View>);
         })}
       </View>
-    </ScrollView>
+    </ScrollView><ConfirmationModal visible={Boolean(tabletSyncMessage)} message={tabletSyncMessage} onClose={() => setTabletSyncMessage('')} title={tabletSyncError ? 'No se pudo sincronizar' : 'Sincronización de tablet'} variant={tabletSyncError ? 'error' : 'success'} /></>
   );
 }
 
@@ -236,9 +236,6 @@ const styles = StyleSheet.create({
   syncButton: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primarySoft },
   syncButtonText: { color: colors.primary, fontWeight: '900', fontSize: 13 },
   syncButtonDisabled: { opacity: 0.55 },
-  syncSummary: { color: colors.muted, fontSize: 11, fontWeight: '700' },
-  syncMessage: { color: colors.success, fontSize: 11, fontWeight: '800', textAlign: 'right' },
-  syncMessageError: { color: colors.primaryDark },
   content: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xxl,
@@ -318,13 +315,15 @@ const styles = StyleSheet.create({
   heroActionsWide: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    height: 316,
   },
   primaryAction: {
-    minHeight: 250,
+    minHeight: 190,
   },
   primaryActionWide: {
     flex: 1.25,
-    minHeight: 320,
+    minHeight: 0,
+    minWidth: 0,
   },
   quickGrid: {
     gap: spacing.md,
@@ -333,10 +332,17 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignContent: 'stretch',
   },
   quickCard: {
     minHeight: 148,
-    minWidth: 220,
+    minWidth: 0,
+  },
+  quickCardWide: {
+    flex: 0,
+    width: '47%',
+    height: 150,
+    minHeight: 0,
   },
   secondaryActions: {
     gap: spacing.md,
