@@ -4,6 +4,7 @@ import { AuthenticatedRequest, requireAuth, requireRoles } from '../middleware/a
 import { TrainingCompletionModel } from '../models/training-completion.model.js';
 import { TrainingModel } from '../models/training.model.js';
 import { CycleModel } from '../models/cycle.model.js';
+import { notifyRoles } from '../services/notifications.js';
 
 export const trainingRouter = Router();
 
@@ -66,6 +67,7 @@ trainingRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req,
       return;
     }
     const training = await TrainingModel.create({ cycleId, title, description, resourceUrl, active: true });
+    await notifyRoles(['visitador'], 'training', training.id, 'Nuevo material de estudio', title).catch((error) => console.warn('Could not queue training notifications.', error));
     res.status(201).json({ id: training.id, cycleId: training.cycleId?.toString(), title: training.title, description: training.description, resourceUrl: training.resourceUrl, active: training.active, createdAt: training.createdAt });
   } catch (error) {
     next(error);

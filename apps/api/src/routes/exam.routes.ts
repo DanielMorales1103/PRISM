@@ -5,6 +5,7 @@ import { ExamAttemptModel } from '../models/exam-attempt.model.js';
 import { ExamModel } from '../models/exam.model.js';
 import { UserModel } from '../models/user.model.js';
 import { CycleModel } from '../models/cycle.model.js';
+import { notifyRoles } from '../services/notifications.js';
 
 export const examRouter = Router();
 
@@ -94,6 +95,7 @@ examRouter.post('/', requireAuth, requireRoles('admin', 'jefe'), async (req, res
       return;
     }
     const exam = await ExamModel.create({ cycleId, title, description, passingScore, maxAttempts, questions, active: true });
+    await notifyRoles(['visitador'], 'exam', exam.id, 'Nuevo examen disponible', title).catch((error) => console.warn('Could not queue exam notifications.', error));
     res.status(201).json(serializeExam(exam, true));
   } catch (error) {
     if (error instanceof Error) {

@@ -16,6 +16,7 @@ import { SyncLogModel } from './sync-log.model.js';
 import { TrainingModel } from './training.model.js';
 import { TrainingCompletionModel } from './training-completion.model.js';
 import { UserModel } from './user.model.js';
+import { NotificationModel, PushDeviceModel } from './notification.model.js';
 import { VisitPlanModel } from './visit-plan.model.js';
 import { VisitModel } from './visit.model.js';
 
@@ -40,6 +41,8 @@ export const models = [
   ExamModel,
   ExamAttemptModel,
   SyncLogModel,
+  NotificationModel,
+  PushDeviceModel,
 ] as const;
 
 export async function ensureCollectionsAndIndexes() {

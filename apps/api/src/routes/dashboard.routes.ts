@@ -20,7 +20,7 @@ type Goals = { doctorVisits: number; pharmacyVisits: number; salesAmount: number
 const emptyGoals = (): Goals => ({ doctorVisits: 0, pharmacyVisits: 0, salesAmount: 0, collectionAmount: 0 });
 
 function canViewTeam(role: string | undefined) {
-  return role === 'admin' || role === 'jefe' || role === 'supervisor' || role === 'facturacion';
+  return role === 'admin' || role === 'jefe' || role === 'supervisor' || role === 'facturacion' || role === 'secretaria';
 }
 
 function addGoals(target: Goals, source: Partial<Goals> | undefined) {

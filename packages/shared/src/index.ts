@@ -1,4 +1,4 @@
-export const userRoles = ['visitador', 'supervisor', 'facturacion', 'jefe', 'admin'] as const;
+export const userRoles = ['visitador', 'supervisor', 'facturacion', 'secretaria', 'jefe', 'admin'] as const;
 export type UserRole = (typeof userRoles)[number];
 
 export const clientTypes = ['doctor', 'pharmacy', 'institution'] as const;

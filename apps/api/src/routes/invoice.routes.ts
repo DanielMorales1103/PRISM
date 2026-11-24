@@ -6,11 +6,13 @@ import { CycleModel } from '../models/cycle.model.js';
 import { InvoiceModel } from '../models/invoice.model.js';
 import { ProductModel } from '../models/product.model.js';
 import { UserModel } from '../models/user.model.js';
+import { NotificationModel } from '../models/notification.model.js';
+import { notifyRoles } from '../services/notifications.js';
 
 export const invoiceRouter = Router();
 
 function canViewTeam(role: string | undefined) {
-  return role === 'admin' || role === 'jefe' || role === 'supervisor' || role === 'facturacion';
+  return role === 'admin' || role === 'jefe' || role === 'supervisor' || role === 'facturacion' || role === 'secretaria';
 }
 
 function totals(invoice: any) {
@@ -115,7 +117,7 @@ invoiceRouter.get('/returns/report', requireAuth, async (req: AuthenticatedReque
   } catch (error) { next(error); }
 });
 
-invoiceRouter.post('/', requireAuth, requireRoles('admin', 'jefe', 'facturacion'), async (req: AuthenticatedRequest, res, next) => {
+invoiceRouter.post('/', requireAuth, requireRoles('admin', 'jefe', 'facturacion', 'secretaria'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const number = String(req.body?.number ?? '').trim();
     const userId = String(req.body?.userId ?? '');
@@ -162,7 +164,7 @@ invoiceRouter.post('/', requireAuth, requireRoles('admin', 'jefe', 'facturacion'
   }
 });
 
-invoiceRouter.post('/:id/payments', requireAuth, requireRoles('admin', 'jefe', 'facturacion'), async (req: AuthenticatedRequest, res, next) => {
+invoiceRouter.post('/:id/payments', requireAuth, requireRoles('admin', 'jefe', 'facturacion', 'secretaria'), async (req: AuthenticatedRequest, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) { res.status(400).json({ message: 'Factura invalida.' }); return; }
     const amount = Number(req.body?.amount);
@@ -244,6 +246,8 @@ invoiceRouter.post('/:id/returns', requireAuth, requireRoles('visitador'), async
     }));
     invoice.returns.push({ number, requestedAt: new Date(), requestedBy: new Types.ObjectId(req.auth!.sub), items: details, status: 'pending' });
     await invoice.save();
+    const createdReturn = invoice.returns.at(-1)!;
+    await notifyRoles(['admin', 'jefe', 'facturacion', 'secretaria'], 'return', createdReturn._id.toString(), 'Devolución pendiente', `${invoice.clientName} · ${number} requiere revisión.`).catch((error) => console.warn('Could not queue return notifications.', error));
     res.status(201).json(serializeInvoice(invoice));
   } catch (error) {
     if (error instanceof Error && error.name === 'VersionError') {
@@ -254,7 +258,7 @@ invoiceRouter.post('/:id/returns', requireAuth, requireRoles('visitador'), async
   }
 });
 
-invoiceRouter.post('/:id/returns/:returnId/review', requireAuth, requireRoles('admin', 'jefe', 'facturacion'), async (req: AuthenticatedRequest, res, next) => {
+invoiceRouter.post('/:id/returns/:returnId/review', requireAuth, requireRoles('admin', 'jefe', 'facturacion', 'secretaria'), async (req: AuthenticatedRequest, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.returnId)) {
       res.status(400).json({ message: 'Factura inválida.' });
@@ -274,6 +278,7 @@ invoiceRouter.post('/:id/returns/:returnId/review', requireAuth, requireRoles('a
     entry.status = decision;
     if (decision === 'rejected') {
       await invoice.save();
+      await NotificationModel.updateMany({ kind: 'return', sourceId: entry._id.toString(), readAt: { $exists: false } }, { $set: { readAt: new Date() } });
       res.json(serializeInvoice(invoice));
       return;
     }
@@ -303,6 +308,7 @@ invoiceRouter.post('/:id/returns/:returnId/review', requireAuth, requireRoles('a
     }
     invoice.creditNotes.push({ number, amount, appliedAt, returnId: entry._id, registeredBy: entry.reviewedBy });
     await invoice.save();
+    await NotificationModel.updateMany({ kind: 'return', sourceId: entry._id.toString(), readAt: { $exists: false } }, { $set: { readAt: new Date() } });
     res.status(201).json(serializeInvoice(invoice));
   } catch (error) {
     if ((error as { code?: number })?.code === 11000) { res.status(409).json({ message: 'Ya existe una nota de crédito con ese número.' }); return; }
